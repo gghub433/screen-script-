@@ -445,3 +445,9 @@ pub extern "system" fn Java_app_revizor_core_Native_receiverStats(env: JNIEnv, _
     let r = unsafe { &*(h as *const ReceiverH) };
     env.new_string(stats::receiver_json(&r.session.stats())).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
 }
+
+/// `sender_clock − local_clock` in µs, or `Long.MIN_VALUE` if the clocks are not synchronised yet.
+#[no_mangle]
+pub extern "system" fn Java_app_revizor_core_Native_receiverClockOffset(_e: JNIEnv, _c: JClass, h: jlong) -> jlong {
+    unsafe { &*(h as *const ReceiverH) }.session.stats().clock_offset_us.unwrap_or(i64::MIN)
+}

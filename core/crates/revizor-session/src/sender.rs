@@ -641,7 +641,8 @@ impl Inner {
         let now = self.clock.now_us();
         let (act_bitrate, act_tier) = {
             let mut st = self.st.lock().unwrap();
-            let rtt = st.sync.srtt_us();
+            // minimum over the last ~1.5 s: robust against one-off scheduling spikes
+            let rtt = st.sync.recent_min_rtt_us(now, 1_500_000).or_else(|| st.sync.srtt_us());
             let enc = if st.enc_n > 0 { Some((st.enc_sum_us / st.enc_n) as u32) } else { None };
             let total_frames = r.frames_complete + r.frames_dropped + st.interval_drops;
             let dropped_ratio = if total_frames > 0 { (r.frames_dropped + st.interval_drops) as f32 / total_frames as f32 } else { 0.0 };

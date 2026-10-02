@@ -5,3 +5,8 @@ build/
 local.properties
 *.iml
 .idea/
+dist/
+android/app/src/main/jniLibs/
+*.jks
+*.keystore
+keystore.env

@@ -59,6 +59,8 @@ pub struct ReceiverStats {
     pub loss_pct: f32,
     pub jitter_us: u32,
     pub rtt_us: Option<u32>,
+    /// `sender_clock − local_clock` in µs once synchronised (for A/V alignment in the app).
+    pub clock_offset_us: Option<i64>,
     /// Capture → complete-frame-received, needs clock sync.
     pub network_latency_us: Option<u32>,
     /// Capture → on screen, measured when the app calls `on_frame_presented`.
@@ -271,6 +273,7 @@ impl ReceiverSession {
             s.keyframe_requests = c.keyframe_requests;
             s.buffered_frames = a.assembler.buffered_frames();
             s.rtt_us = a.sync.srtt_us();
+            s.clock_offset_us = a.sync.offset_us();
         }
         s
     }

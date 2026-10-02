@@ -1,0 +1,44 @@
+name: CI
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  core:
+    name: Rust core (tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-pc-windows-gnu
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            core
+            core/crates/revizor-win-sender
+      - name: Unit + integration tests
+        working-directory: core
+        run: cargo test --workspace
+      - name: Core type-checks for Android
+        working-directory: core
+        run: cargo check -p revizor-jni --target aarch64-linux-android
+      - name: Windows sender type-checks
+        working-directory: core/crates/revizor-win-sender
+        run: cargo check --target x86_64-pc-windows-gnu
+      - name: Android platform-API Kotlin type-check
+        run: tools/android-typecheck.sh
+
+  windows:
+    name: Windows sender (build)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - working-directory: core/crates/revizor-win-sender
+        run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: revizor-sender-windows
+          path: core/crates/revizor-win-sender/target/release/revizor-sender.exe

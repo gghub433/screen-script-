@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">Revizor</string>
+    <string name="capture_channel">Screen sharing</string>
+    <string name="update_channel">Updates</string>
+</resources>

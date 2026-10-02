@@ -481,3 +481,82 @@ fn many_short_sessions_do_not_leak_threads_or_hang() {
     }
 }
 
+
+fn rss_kb() -> Option<u64> {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()?
+        .lines()
+        .find(|l| l.starts_with("VmRSS:"))?
+        .split_whitespace()
+        .nth(1)?
+        .parse()
+        .ok()
+}
+
+/// Long-run stability test. Run explicitly:
+///   REVIZOR_SOAK_SECS=3600 cargo test -p revizor-session --test e2e soak -- --ignored --nocapture
+/// Every 30 s it injects a different fault (random loss, burst loss, bandwidth squeeze, jitter, a 4 s outage) and
+/// samples real measurements. It fails if memory or latency drift, buffers grow, or the stream does not recover.
+#[test]
+#[ignore]
+fn soak() {
+    let secs: u64 = std::env::var("REVIZOR_SOAK_SECS").ok().and_then(|v| v.parse().ok()).unwrap_or(90);
+    let rig = Rig::new(RigOpts::default());
+    rig.wait_for("streaming", Duration::from_secs(10), |r| r.ok() >= 60);
+    let t0 = Instant::now();
+    let mut samples: Vec<(u64, u64, Option<u32>, f32, usize)> = vec![]; // (t, rss, e2e, fps, buffered)
+    let mut last_ok = rig.ok();
+    let mut cycle = 0u64;
+    let mut outage_recovered = 0;
+    let mut outages = 0;
+    while t0.elapsed() < Duration::from_secs(secs) {
+        let phase = (t0.elapsed().as_secs() / 30) % 6;
+        if t0.elapsed().as_secs() / 30 != cycle {
+            cycle = t0.elapsed().as_secs() / 30;
+            rig.link.update(|c| {
+                *c = LinkConfig::default();
+                match phase {
+                    1 => c.loss_pct = 2.0,
+                    2 => { c.burst_enter = 0.004; c.burst_exit = 0.4; }
+                    3 => { c.bandwidth_bps = Some(6_000_000); c.max_queue = Duration::from_millis(80); }
+                    4 => { c.jitter = Duration::from_millis(8); c.base_delay = Duration::from_millis(3); c.reorder_pct = 2.0; }
+                    _ => {}
+                }
+            });
+            if phase == 5 {
+                // outage: 4 s of nothing, then it must come back by itself
+                outages += 1;
+                let before = rig.ok();
+                rig.link.update(|c| c.blackout = true);
+                thread::sleep(Duration::from_secs(4));
+                rig.link.update(|c| c.blackout = false);
+                let end = Instant::now() + Duration::from_secs(20);
+                while Instant::now() < end && rig.ok() < before + 30 {
+                    thread::sleep(Duration::from_millis(50));
+                }
+                if rig.ok() >= before + 30 { outage_recovered += 1; }
+            }
+        }
+        thread::sleep(Duration::from_secs(5));
+        let rs = rig.receiver().stats();
+        let ok = rig.ok();
+        let fps = (ok - last_ok) as f32 / 5.0;
+        last_ok = ok;
+        let row = (t0.elapsed().as_secs(), rss_kb().unwrap_or(0), rs.e2e_latency_us, fps, rs.buffered_frames);
+        let ss = rig.sender().stats();
+        println!("   sender: rtt={:?} loss={:?} enc_us={:?} dropped_sender={} retx={} last_report={:?}", ss.rtt_us, ss.last_report.map(|r| (r.packets_lost, r.packets_expected, r.frames_dropped, r.jitter_us)), ss.encode_us_avg, ss.frames_dropped_sender, ss.retransmitted_packets, ss.limited_by);
+        println!("t={:>5}s phase={} rss={} MB e2e={:?} µs fps={:.1} buffered={} bitrate={:.1} Mbit/s tier={}x{}", row.0, phase, row.1 / 1024, row.2, row.3, row.4,
+            rig.sender().stats().bitrate_target_bps as f32 / 1e6, rig.sender().stats().width, rig.sender().stats().height);
+        samples.push(row);
+    }
+    assert_eq!(rig.sh.frames_bad.load(Ordering::Relaxed), 0, "corrupted frames delivered");
+    assert_eq!(outage_recovered, outages, "every outage must recover");
+    // Memory: compare the second quarter with the last quarter (after warm-up allocations).
+    let n = samples.len();
+    if n >= 8 {
+        let avg = |s: &[(u64, u64, Option<u32>, f32, usize)]| s.iter().map(|x| x.1).sum::<u64>() / s.len() as u64;
+        let (early, late) = (avg(&samples[n / 4..n / 2]), avg(&samples[n * 3 / 4..]));
+        assert!(late < early + 30 * 1024, "RSS grew from {} MB to {} MB", early / 1024, late / 1024);
+    }
+    assert!(samples.iter().all(|s| s.4 <= 8), "receiver buffer grew: {:?}", samples.iter().map(|s| s.4).max());
+}

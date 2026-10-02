@@ -83,7 +83,7 @@ fn congestion_cuts_bitrate_first_then_tier_after_dwell() {
     s.run(5, |_| good());
     let t0 = s.now;
     s.run(60, |_| lossy(6.0));
-    let first = s.log.iter().find(|e| e.t > t0).unwrap();
+    let first = s.log.iter().find(|e| e.t > t0 && (e.bitrate.is_some() || e.tier.is_some())).unwrap();
     assert!(first.bitrate.is_some() && first.tier.is_none(), "bitrate must react before the tier: {first:?}");
     let ch = s.tier_changes();
     assert!(!ch.is_empty(), "sustained congestion must eventually reduce the tier");

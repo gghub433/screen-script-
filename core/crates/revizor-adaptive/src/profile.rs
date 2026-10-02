@@ -43,6 +43,8 @@ pub struct Config {
     pub bpp_min: f64,
     pub bpp_start: f64,
     pub bpp_max: f64,
+    /// Smoothed loss above this cuts the bitrate. Between `loss_healthy_pct` and this value the engine
+    /// holds (FEC/NACK repair the loss; random Wi-Fi loss is not congestion). Queueing delay is the other trigger.
     pub loss_high_pct: f32,
     pub loss_healthy_pct: f32,
     /// Queueing delay (RTT above the baseline) considered congestion, µs.
@@ -85,10 +87,10 @@ impl Config {
             ladder.push(Tier::new(c.max_short_side.min(720), c.max_fps.min(30).max(1)));
         }
         let (bpp_start, bpp_max, loss_high, down_dwell, up_dwell) = match profile {
-            Profile::Quality => (0.11, 0.22, 3.0, 4_000, 25_000),
-            Profile::LowLatency => (0.08, 0.16, 1.5, 2_500, 20_000),
-            Profile::BatterySaver => (0.07, 0.12, 3.0, 3_000, 45_000),
-            _ => (0.09, 0.20, 2.0, 3_000, 20_000),
+            Profile::Quality => (0.11, 0.22, 8.0, 4_000, 25_000),
+            Profile::LowLatency => (0.08, 0.16, 4.0, 2_500, 20_000),
+            Profile::BatterySaver => (0.07, 0.12, 6.0, 3_000, 45_000),
+            _ => (0.09, 0.20, 6.0, 3_000, 20_000),
         };
         Self {
             profile,

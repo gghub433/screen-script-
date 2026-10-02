@@ -1,0 +1,89 @@
+name: Release
+# Publishes the signed Android APK (+ SHA-256) and the Windows sender. The Android app's built-in
+# updater reads the LATEST GitHub release and expects assets named
+#   revizor-<versionName>-<versionCode>.apk   and   revizor-<versionName>-<versionCode>.apk.sha256
+#
+# One-time setup (Settings > Secrets and variables > Actions):
+#   REVIZOR_KEYSTORE_B64        base64 of your release.jks   (base64 -w0 release.jks)
+#   REVIZOR_KEYSTORE_PASSWORD   keystore + key password
+#   REVIZOR_KEY_ALIAS           optional, defaults to "revizor"
+# Use the SAME keystore every time: Android refuses to update an app signed with a different key.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - name: Require signing secrets
+        env: { B64: "${{ secrets.REVIZOR_KEYSTORE_B64 }}" }
+        run: |
+          [ -n "$B64" ] || { echo "::error::Add the REVIZOR_KEYSTORE_B64 / REVIZOR_KEYSTORE_PASSWORD secrets. Releases must be signed with a stable key or in-app updates will not install."; exit 1; }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 17 }
+      - uses: android-actions/setup-android@v3
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: "aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android" }
+      - uses: Swatinem/rust-cache@v2
+        with: { workspaces: core }
+      - name: NDK + cargo-ndk
+        run: |
+          sdkmanager "ndk;26.3.11579264" >/dev/null
+          cargo install cargo-ndk --locked
+      - name: Build native core
+        working-directory: core
+        env:
+          RUSTFLAGS: "-C link-arg=-Wl,-z,max-page-size=16384"
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/26.3.11579264"
+          cargo ndk -t arm64-v8a -t armeabi-v7a -t x86_64 -o ../android/app/src/main/jniLibs build --release -p revizor-jni
+      - name: Build APK
+        working-directory: android
+        env:
+          REVIZOR_KEYSTORE_PASSWORD: ${{ secrets.REVIZOR_KEYSTORE_PASSWORD }}
+          REVIZOR_KEY_ALIAS: ${{ secrets.REVIZOR_KEY_ALIAS }}
+          KS_B64: ${{ secrets.REVIZOR_KEYSTORE_B64 }}
+        run: |
+          echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          export REVIZOR_KEYSTORE="$RUNNER_TEMP/release.jks"
+          CODE=$(git rev-list --count HEAD)
+          NAME=$(sed -n 's/^VERSION_NAME=//p' version.properties)
+          ./gradlew assembleRelease -PversionCode=$CODE
+          mkdir -p ../dist
+          cp app/build/outputs/apk/release/app-release.apk ../dist/revizor-$NAME-$CODE.apk
+          (cd ../dist && sha256sum revizor-$NAME-$CODE.apk > revizor-$NAME-$CODE.apk.sha256)
+      - uses: actions/upload-artifact@v4
+        with: { name: android, path: dist/* }
+
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - working-directory: core/crates/revizor-win-sender
+        run: cargo build --release
+      - run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item core/crates/revizor-win-sender/target/release/revizor-sender.exe dist/revizor-sender-windows-x64.exe
+          (Get-FileHash dist/revizor-sender-windows-x64.exe -Algorithm SHA256).Hash.ToLower() + "  revizor-sender-windows-x64.exe" | Out-File -Encoding ascii dist/revizor-sender-windows-x64.exe.sha256
+      - uses: actions/upload-artifact@v4
+        with: { name: windows, path: dist/* }
+
+  publish:
+    needs: [android, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          make_latest: true

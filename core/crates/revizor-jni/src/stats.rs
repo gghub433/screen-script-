@@ -55,7 +55,7 @@ pub fn receiver_json(s: &ReceiverStats) -> String {
     format!(
         "{{\"sender\":\"{}\",\"codec\":{},\"width\":{},\"height\":{},\"fpsTarget\":{},\"fps\":{:.1},\"recvBps\":{},\"lossPct\":{:.2},\
          \"jitterUs\":{},\"rttUs\":{},\"arrivalLatencyUs\":{},\"e2eUs\":{},\"decodeUs\":{},\"framesDelivered\":{},\"framesAbandoned\":{},\
-         \"framesDiscarded\":{},\"framesDroppedApp\":{},\"recoveredFec\":{},\"recoveredRetx\":{},\"nacks\":{},\"keyframeRequests\":{},\"buffered\":{}}}",
+         \"framesDiscarded\":{},\"framesDroppedApp\":{},\"recoveredFec\":{},\"recoveredRetx\":{},\"nacks\":{},\"keyframeRequests\":{},\"buffered\":{},\"clockOffsetUs\":{}}}",
         esc(&s.sender_name),
         opt(p.map(|p| p.video.codec as u8)),
         p.map_or(0, |p| p.video.width),
@@ -78,5 +78,6 @@ pub fn receiver_json(s: &ReceiverStats) -> String {
         s.nacks_sent,
         s.keyframe_requests,
         s.buffered_frames,
+        opt(s.clock_offset_us),
     )
 }

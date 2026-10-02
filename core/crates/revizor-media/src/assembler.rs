@@ -100,6 +100,11 @@ struct Partial {
     flags: u8,
     have_meta: bool,
     first_seen_us: u64,
+    /// Arrival time of the most recent packet (data or parity) of this frame.
+    last_rx_us: u64,
+    /// When loss evidence first appeared (a hole below a received packet, or a later frame already arriving).
+    gap_since_us: Option<u64>,
+    fec_k: u8,
     last_nack_us: u64,
     nacks: u8,
 }
@@ -118,6 +123,9 @@ impl Partial {
             flags: 0,
             have_meta: false,
             first_seen_us: now,
+            last_rx_us: now,
+            gap_since_us: None,
+            fec_k: 0,
             last_nack_us: 0,
             nacks: 0,
         }
@@ -268,6 +276,8 @@ impl Assembler {
         if p.pkt_count != hdr.pkt_count {
             return; // inconsistent; ignore
         }
+        p.last_rx_us = now;
+        p.fec_k = hdr.fec_k;
         if !p.have_meta {
             p.pts_us = hdr.pts_us;
             p.flags = hdr.flags & !FLAG_RETRANSMIT;
@@ -317,6 +327,7 @@ impl Assembler {
         if p.groups != h.groups {
             return;
         }
+        p.last_rx_us = now;
         p.parity[h.group as usize] = Some((h.xor_len, r.rest().to_vec()));
         self.counters.packets_recovered_fec += p.try_fec();
     }
@@ -460,15 +471,32 @@ impl Assembler {
             if p.complete() || p.nacks >= max {
                 continue;
             }
-            let age = now.saturating_sub(p.first_seen_us);
-            if age < delay || (p.nacks > 0 && now.saturating_sub(p.last_nack_us) < interval) {
+            // Packets are sent in order (and paced), so a packet is only *known* missing when
+            //  (a) a later packet of the same frame already arrived, or
+            //  (b) a later frame has started arriving.
+            // A frame that is merely still being transmitted must not be NACKed, otherwise
+            // pacing would turn into a stream of useless retransmissions.
+            let later_frame_seen = highest.is_some_and(|h| newer_u32(h, id));
+            let missing_all = p.missing();
+            let hole_inside = missing_all.iter().any(|&i| i < p.max_idx);
+            if hole_inside || later_frame_seen {
+                p.gap_since_us.get_or_insert(now);
+            }
+            // Parity follows the data of a frame: give it a moment to arrive before asking for retransmission.
+            let parity_pending = p.fec_k > 0 && p.parity.iter().filter(|x| x.is_some()).count() < p.groups.max(1) as usize && p.max_idx + 1 >= p.pkt_count;
+            let gap_wait = if parity_pending { delay * 3 } else { delay };
+            let gap_ready = p.gap_since_us.is_some_and(|g| now.saturating_sub(g) >= gap_wait);
+            // Tail loss: nothing arrived for a while and the frame is still incomplete.
+            let idle_ready = now.saturating_sub(p.last_rx_us) >= delay * 3;
+            if !(gap_ready || idle_ready) {
                 continue;
             }
-            let later_frame_seen = highest.is_some_and(|h| newer_u32(h, id));
-            let missing: Vec<u16> = p
-                .missing()
+            if p.nacks > 0 && now.saturating_sub(p.last_nack_us) < interval {
+                continue;
+            }
+            let missing: Vec<u16> = missing_all
                 .into_iter()
-                .filter(|&i| i < p.max_idx || later_frame_seen || age >= delay * 3)
+                .filter(|&i| (gap_ready && (i < p.max_idx || later_frame_seen)) || idle_ready)
                 .take(255)
                 .collect();
             if missing.is_empty() {
@@ -729,6 +757,34 @@ mod tests {
         assert!(a.poll(100_000).keyframe_request.is_none());
         assert_eq!(a.poll(400_000).keyframe_request, Some(KeyframeReason::StreamStart));
         assert_eq!(a.counters().frames_delivered, 0);
+    }
+
+    #[test]
+    fn frame_still_being_paced_out_is_not_nacked() {
+        let mut a = asm();
+        let pf = PacketizedFrame::with_payload(frame(0, true, 3000), 0, P); // 30 packets
+        let mut t = 0u64;
+        let mut delivered = 0;
+        for i in 0..pf.pkt_count {
+            feed_data(&mut a, t, &pf, i, false);
+            let out = a.poll(t);
+            assert!(out.nacks.is_empty(), "NACK for a packet that was simply not sent yet (after {i} packets)");
+            delivered += out.frames.len();
+            t += 500; // sender pacing: one packet every 0.5 ms
+        }
+        assert_eq!(delivered, 1);
+        assert_eq!(a.counters().nacks_sent, 0);
+    }
+
+    #[test]
+    fn tail_loss_is_nacked_after_idle() {
+        let mut a = asm();
+        let pf = PacketizedFrame::with_payload(frame(0, true, 1000), 0, P);
+        feed_all_but(&mut a, 0, &pf, &[9]); // last packet lost, nothing follows
+        assert!(a.poll(3_000).nacks.is_empty());
+        let out = a.poll(7_000);
+        assert_eq!(out.nacks.len(), 1);
+        assert_eq!(out.nacks[0].missing, vec![9]);
     }
 
     #[test]
