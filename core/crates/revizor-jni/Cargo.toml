@@ -1,0 +1,19 @@
+[package]
+name = "revizor-jni"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+name = "revizor_core"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+revizor-proto.workspace = true
+revizor-crypto.workspace = true
+revizor-session.workspace = true
+revizor-transport.workspace = true
+revizor-adaptive.workspace = true
+revizor-media.workspace = true
+jni = "0.21"
+log.workspace = true

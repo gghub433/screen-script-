@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Revizor</title>
+<style>
+:root{
+  --bg:#0b0e13; --panel:#121720; --panel2:#171d29; --line:#222b3a; --text:#e8edf5; --muted:#8793a6;
+  --accent:#3dd6c6; --accent-ink:#04201d; --warn:#ffb454; --bad:#ff6b6b; --ok:#46d68c;
+  --r:14px;
+}
+@media (prefers-color-scheme: light){
+  :root{--bg:#f4f6fa; --panel:#fff; --panel2:#f0f3f8; --line:#dde3ee; --text:#0e1522; --muted:#5d6b80; --accent:#0aa797; --accent-ink:#fff;}
+}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 "Segoe UI Variable","Segoe UI",system-ui,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:20px 16px 56px}
+header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.32em;font-size:15px}
+.brand svg{width:26px;height:26px}
+.pill{font-size:12px;padding:4px 10px;border-radius:999px;background:var(--panel2);border:1px solid var(--line);color:var(--muted);display:flex;gap:6px;align-items:center}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+.pill.live .dot{background:var(--ok);box-shadow:0 0 0 4px #46d68c30}
+.pill.warn .dot{background:var(--warn)} .pill.bad .dot{background:var(--bad)}
+h2{font-size:12px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin:26px 0 10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:6px}
+.row{display:flex;align-items:center;gap:12px;padding:12px;border-radius:10px;cursor:pointer;transition:background .12s}
+.row:hover{background:var(--panel2)}
+.row.sel{background:var(--panel2);outline:1.5px solid var(--accent)}
+.ico{width:38px;height:38px;border-radius:10px;background:var(--panel2);display:grid;place-items:center;flex:none}
+.row.sel .ico{background:var(--accent);color:var(--accent-ink)}
+.grow{flex:1;min-width:0}
+.t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.s{font-size:12.5px;color:var(--muted)}
+button{font:inherit;border:0;border-radius:10px;padding:9px 16px;background:var(--panel2);color:var(--text);cursor:pointer;border:1px solid var(--line)}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent);font-weight:700;padding:14px 22px;font-size:16px;width:100%;border-radius:12px}
+button.primary:disabled{opacity:.35;cursor:not-allowed}
+button.danger{background:transparent;color:var(--bad);border-color:var(--bad)}
+button.small{padding:5px 11px;font-size:13px}
+.seg{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;margin:6px 6px 4px}
+.seg button{border:0;background:transparent;padding:6px 14px;border-radius:8px;color:var(--muted)}
+.seg button.on{background:var(--accent);color:var(--accent-ink);font-weight:600}
+.empty{padding:26px 16px;text-align:center;color:var(--muted)}
+.empty b{display:block;color:var(--text);margin-bottom:4px}
+.tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
+.tag.ok{color:var(--ok);border-color:#46d68c55} .tag.pair{color:var(--warn);border-color:#ffb45466}
+.hero{text-align:center;padding:30px 16px 22px}
+.hero .big{font-size:22px;font-weight:700;margin-bottom:6px}
+.chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:14px 0}
+.chip{background:var(--panel2);border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px}
+.notice{margin:12px auto;max-width:520px;background:#ffb4541a;border:1px solid #ffb45455;color:var(--warn);padding:10px 14px;border-radius:10px;font-size:13.5px}
+.err{background:#ff6b6b1a;border-color:#ff6b6b55;color:var(--bad)}
+details{margin-top:22px;border:1px solid var(--line);border-radius:var(--r);background:var(--panel)}
+summary{cursor:pointer;padding:14px 16px;color:var(--muted);font-weight:600;list-style:none}
+summary::-webkit-details-marker{display:none}
+details[open] summary{border-bottom:1px solid var(--line)}
+.pad{padding:14px 16px}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}
+.kv{background:var(--panel2);border-radius:10px;padding:10px 12px}
+.kv .k{font-size:11.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.06em}
+.kv .v{font-size:18px;font-weight:600;font-variant-numeric:tabular-nums}
+select,input{font:inherit;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.flex{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+dialog{border:1px solid var(--line);background:var(--panel);color:var(--text);border-radius:16px;padding:22px;min-width:300px}
+dialog::backdrop{background:#000a}
+#pin{font-size:30px;letter-spacing:.4em;text-align:center;width:100%;font-variant-numeric:tabular-nums}
+#toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--bad);color:var(--bad);padding:10px 16px;border-radius:12px;display:none;max-width:90vw}
+@media (prefers-reduced-motion:no-preference){.row{transition:background .12s,outline-color .12s}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <svg viewBox="0 0 32 32" fill="none"><rect x="2" y="2" width="28" height="28" rx="8" fill="var(--accent)"/><path d="M10 23V9h7.2a4.2 4.2 0 0 1 1.2 8.2L22 23h-3.3l-3.2-5.4H13V23z M13 15.2h4a1.5 1.5 0 0 0 0-3h-4z" fill="var(--accent-ink)"/></svg>
+      REVIZOR
+    </div>
+    <div id="status" class="pill"><span class="dot"></span><span id="statusText">Ready</span></div>
+  </header>
+
+  <div id="setup">
+    <h2>Send to</h2>
+    <div class="card" id="receivers"></div>
+    <div class="flex" style="margin-top:10px"><button class="small" id="rescan">Search again</button><span class="s" id="scanNote"></span></div>
+
+    <h2>Share</h2>
+    <div class="card">
+      <div class="seg" id="kind"><button data-k="monitor" class="on">Screens</button><button data-k="window">Windows</button></div>
+      <div id="sources"></div>
+    </div>
+
+    <div style="margin-top:22px"><button class="primary" id="start" disabled>Start sharing</button></div>
+  </div>
+
+  <div id="live" style="display:none">
+    <div class="card hero">
+      <div class="big" id="liveTitle">Connecting…</div>
+      <div class="s" id="liveSub"></div>
+      <div class="chips" id="liveChips"></div>
+      <div id="liveNote"></div>
+      <button class="danger" id="stop" style="margin-top:6px">Stop sharing</button>
+    </div>
+  </div>
+
+  <details id="diag">
+    <summary>Diagnostics</summary>
+    <div class="pad"><div class="grid" id="stats"></div>
+      <p class="s">Every value is measured on this PC or reported by the receiver. “—” means it is not available yet.</p></div>
+  </details>
+
+  <details>
+    <summary>Advanced</summary>
+    <div class="pad">
+      <div class="flex"><label for="profile">Quality profile</label>
+        <select id="profile">
+          <option value="balanced">Balanced (recommended)</option>
+          <option value="quality">Best quality</option>
+          <option value="low-latency">Lowest delay</option>
+          <option value="battery">Save power</option>
+        </select></div>
+      <p class="s">Resolution, frame rate and bitrate always adapt automatically to the network and the devices.</p>
+      <div class="flex" style="margin-top:14px"><input id="ip" placeholder="Receiver IP address" size="18"><button class="small" id="addip">Connect by IP</button></div>
+      <h2 style="margin-top:22px">Paired receivers</h2>
+      <div id="trusted"></div>
+      <p class="s" style="margin-top:16px">This PC: <span id="me"></span></p>
+    </div>
+  </details>
+</div>
+
+<dialog id="pairDlg">
+  <div style="font-weight:700;font-size:18px;margin-bottom:6px">Pair with <span id="pairName"></span></div>
+  <div class="s" style="margin-bottom:14px">Enter the 6-digit code shown on the receiver.</div>
+  <input id="pin" inputmode="numeric" maxlength="6" autocomplete="off" placeholder="••••••">
+  <div class="flex" style="margin-top:16px;justify-content:flex-end"><button id="pairCancel">Cancel</button><button class="primary" style="width:auto;padding:9px 18px;font-size:15px" id="pairOk">Pair</button></div>
+</dialog>
+<div id="toast"></div>
+
+<script>
+const TOKEN="__TOKEN__";
+let S=null, selRecv=null, selSrc=null, kind="monitor", pairTarget=null;
+const $=id=>document.getElementById(id);
+const api=async(path,body)=>{
+  const r=await fetch(path,{method:body===undefined?"GET":"POST",headers:{"x-revizor-token":TOKEN,"content-type":"application/json"},body:body===undefined?undefined:JSON.stringify(body)});
+  const j=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(j.error||("Request failed ("+r.status+")"));
+  return j;
+};
+const toast=(m)=>{const t=$("toast");t.textContent=m;t.style.display="block";clearTimeout(toast.h);toast.h=setTimeout(()=>t.style.display="none",5000)};
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmt=(v,u,d=1)=>v==null?"—":(Number(v).toFixed(d)+" "+u);
+const monitorSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>';
+const winSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 9h18"/></svg>';
+const tvSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg>';
+
+function renderReceivers(){
+  const el=$("receivers");
+  if(!S.receivers.length){
+    el.innerHTML='<div class="empty"><b>No receivers found</b>Open Revizor on your TV or phone. Both devices must be on the same network.</div>';
+    return;
+  }
+  el.innerHTML=S.receivers.map(r=>{
+    const sel=selRecv===r.id?" sel":"";
+    const tag=r.trusted?'<span class="tag ok">Ready</span>':(r.pairing_open?'<span class="tag pair">Needs pairing</span>':'<span class="tag">Open pairing on the receiver</span>');
+    const act=(!r.trusted&&r.pairing_open)?'<button class="small" data-pair="'+esc(r.id)+'">Pair</button>':"";
+    return '<div class="row'+sel+'" data-r="'+esc(r.id)+'"><div class="ico">'+tvSvg+'</div><div class="grow"><div class="t">'+esc(r.name)+'</div><div class="s">'+esc(r.ip)+' · up to '+r.max_width+'×'+r.max_height+' @ '+r.max_fps+' fps</div></div>'+tag+act+'</div>';
+  }).join("");
+}
+function renderSources(){
+  const list=S.sources.filter(s=>s.kind===kind);
+  $("sources").innerHTML=list.length?list.map(s=>{
+    const sel=selSrc===s.id?" sel":"";
+    return '<div class="row'+sel+'" data-s="'+esc(s.id)+'"><div class="ico">'+(s.kind==="monitor"?monitorSvg:winSvg)+'</div><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+s.width+'×'+s.height+(s.refresh_hz?' · '+s.refresh_hz+' Hz':'')+'</div></div></div>';
+  }).join(""):'<div class="empty"><b>'+(S.platform==="windows"?"Nothing to share":"Screen sharing works on Windows")+'</b></div>';
+}
+function render(){
+  const st=S.stream;
+  const live=st&&st.state!=="stopped";
+  $("setup").style.display=live?"none":"block";
+  $("live").style.display=live?"block":"none";
+  const pill=$("status");pill.className="pill";
+  let txt="Ready";
+  if(live){
+    if(st.state==="streaming"){txt="Live";pill.classList.add("live")}
+    else if(st.state==="failed"){txt="Problem";pill.classList.add("bad")}
+    else {txt=st.state==="reconnecting"?"Reconnecting…":"Connecting…";pill.classList.add("warn")}
+    $("liveTitle").textContent=st.state==="streaming"?"Sharing to "+st.receiver:(st.state==="failed"?"Sharing stopped":txt.replace("…","")+" to "+st.receiver+"…");
+    $("liveSub").textContent=st.state==="streaming"?"Your screen is encrypted end-to-end on your local network.":"";
+    const chips=[];
+    if(st.width)chips.push(st.height+"p · "+st.fps+" fps");
+    if(st.bitrate_mbps)chips.push(st.bitrate_mbps.toFixed(1)+" Mbit/s");
+    if(st.encoder)chips.push(st.encoder.hardware?"GPU encoder":"Software encoder");
+    $("liveChips").innerHTML=chips.map(c=>'<span class="chip">'+esc(c)+'</span>').join("");
+    let note="";
+    if(st.error)note+='<div class="notice err">'+esc(st.error)+'</div>';
+    if(st.encoder&&!st.encoder.hardware)note+='<div class="notice">No hardware video encoder was found, so the CPU is encoding. Expect higher load and delay.</div>';
+    if(st.limited_by){
+      const why={Network:"the network",Thermal:"temperature protection",Battery:"battery saving",EncoderOverload:"this PC being busy",DecoderOverload:"the receiver being busy",Recovery:"",Profile:"the chosen profile"}[st.limited_by]||"";
+      if(why)note+='<div class="notice">Quality was lowered because of '+why+'. It will recover automatically.</div>';
+    }
+    $("liveNote").innerHTML=note;
+    const x=st.stats||{};
+    const cells=[["Delay (glass to glass)",fmt(x.latency_ms,"ms")],["Round trip",fmt(x.rtt_ms,"ms")],["Packet loss",fmt(x.loss_pct,"%")],["Jitter",fmt(x.jitter_ms,"ms")],["Sending",fmt(x.sent_mbps,"Mbit/s",2)],["Encode time",fmt(x.encode_ms,"ms")],["Receiver decode",fmt(x.decode_ms,"ms")],["Frames sent",x.frames_sent??"—"],["Dropped on PC",x.frames_dropped??"—"],["Repaired packets",x.retransmitted??"—"],["Keyframes",x.keyframes??"—"],["Error protection",x.fec_k?("1 in "+x.fec_k):"off"]];
+    $("stats").innerHTML=cells.map(c=>'<div class="kv"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'</div></div>').join("");
+  } else {
+    renderReceivers();renderSources();
+    $("stats").innerHTML='<div class="s">Start sharing to see live measurements.</div>';
+    const ok=selRecv&&selSrc&&S.receivers.find(r=>r.id===selRecv&&r.trusted)&&S.sources.find(s=>s.id===selSrc);
+    $("start").disabled=!ok;
+  }
+  pill.querySelector("#statusText").textContent=txt;
+  $("me").textContent=S.device.name+" · "+S.device.id.slice(0,8);
+  $("trusted").innerHTML=S.trusted.length?S.trusted.map(t=>'<div class="flex" style="justify-content:space-between;padding:6px 0"><span>'+esc(t.name)+' <span class="s">'+t.id.slice(0,8)+'</span></span><button class="small danger" data-forget="'+esc(t.id)+'">Remove</button></div>').join(""):'<div class="s">None yet.</div>';
+}
+async function refresh(){try{S=await api("/api/state");render()}catch(e){}}
+document.addEventListener("click",async e=>{
+  const t=e.target.closest("[data-pair],[data-forget],[data-r],[data-s]");if(!t)return;
+  if(t.dataset.pair){pairTarget=S.receivers.find(r=>r.id===t.dataset.pair);$("pairName").textContent=pairTarget.name;$("pin").value="";$("pairDlg").showModal();$("pin").focus();return}
+  if(t.dataset.forget){await api("/api/forget",{id:t.dataset.forget});refresh();return}
+  if(t.dataset.r){selRecv=t.dataset.r;render();return}
+  if(t.dataset.s){selSrc=t.dataset.s;render();return}
+});
+$("kind").onclick=e=>{const b=e.target.closest("button");if(!b)return;kind=b.dataset.k;[...$("kind").children].forEach(c=>c.classList.toggle("on",c===b));renderSources()};
+$("rescan").onclick=async()=>{$("scanNote").textContent="Searching…";try{await api("/api/scan",{})}catch(e){toast(e.message)}$("scanNote").textContent="";refresh()};
+$("addip").onclick=async()=>{try{await api("/api/manual",{ip:$("ip").value.trim()});refresh()}catch(e){toast(e.message)}};
+$("start").onclick=async()=>{try{await api("/api/start",{receiver:selRecv,source:selSrc,profile:$("profile").value});refresh()}catch(e){toast(e.message)}};
+$("stop").onclick=async()=>{await api("/api/stop",{});refresh()};
+$("pairCancel").onclick=()=>$("pairDlg").close();
+$("pairOk").onclick=async()=>{try{await api("/api/pair",{id:pairTarget.id,pin:$("pin").value.trim()});$("pairDlg").close();selRecv=pairTarget.id;refresh()}catch(e){toast(e.message)}};
+$("pin").addEventListener("keydown",e=>{if(e.key==="Enter")$("pairOk").click()});
+refresh();setInterval(refresh,1000);
+</script>
+</body>
+</html>

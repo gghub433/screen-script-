@@ -484,7 +484,7 @@ impl Inner {
                 }
                 // Every start counts as a guess; at most 5 per displayed PIN.
                 win.guard.record_failure();
-                let mut r = PairResponder::new(self.cfg.identity.clone(), "Revizor", &win.pin, self.cfg.trust.clone());
+                let mut r = PairResponder::new(self.cfg.identity.clone(), &self.cfg.caps.device_name, &win.pin, self.cfg.trust.clone());
                 if let Ok(reply) = r.on_p1(body) {
                     win.attempt = Some((from, r, now));
                     let pkt = wrap(PacketKind::Pairing, &reply);

@@ -1,0 +1,17 @@
+[package]
+name = "revizor-recv-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Headless Revizor receiver for development: dumps the received stream and prints real stats."
+
+[[bin]]
+name = "revizor-recv"
+path = "src/main.rs"
+
+[dependencies]
+revizor-proto.workspace = true
+revizor-crypto.workspace = true
+revizor-session.workspace = true
+revizor-transport.workspace = true
+revizor-media.workspace = true

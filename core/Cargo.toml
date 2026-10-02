@@ -1,6 +1,15 @@
 [workspace]
 resolver = "2"
-members = ["crates/revizor-proto", "crates/revizor-crypto", "crates/revizor-media", "crates/revizor-adaptive", "crates/revizor-transport", "crates/revizor-session"]
+members = [
+  "crates/revizor-proto",
+  "crates/revizor-crypto",
+  "crates/revizor-media",
+  "crates/revizor-adaptive",
+  "crates/revizor-transport",
+  "crates/revizor-session",
+  "crates/revizor-recv-cli",
+  "crates/revizor-jni",
+]
 # revizor-win-sender is Windows-only and built separately (see docs/BUILD.md)
 exclude = ["crates/revizor-win-sender"]
 

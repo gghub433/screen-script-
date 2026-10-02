@@ -22,7 +22,7 @@ impl Clock for MonotonicClock {
 #[cfg(not(unix))]
 impl Clock for MonotonicClock {
     fn now_us(&self) -> u64 {
-        static BASE: std::sync::OnceLock<std::time::Instant> = OnceLock::new();
+        static BASE: std::sync::OnceLock<std::time::Instant> = std::sync::OnceLock::new();
         BASE.get_or_init(std::time::Instant::now).elapsed().as_micros() as u64 + 1
     }
 }
