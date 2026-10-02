@@ -64,9 +64,9 @@ if [ "$MODE" = "download" ]; then
 fi
 
 # ───────────────────────── build mode ─────────────────────────
-say "Installing build tools (JDK 17, Rust, aapt2, binutils)"
+say "Installing build tools (JDK 17, Rust, clang, aapt2, binutils)"
 pkg update -y >/dev/null
-pkg install -y openjdk-17 rust git curl unzip aapt2 binutils termux-tools >/dev/null
+pkg install -y openjdk-17 rust clang git curl unzip aapt2 binutils termux-tools >/dev/null
 export JAVA_HOME="${JAVA_HOME:-$PREFIX/lib/jvm/java-17-openjdk}"
 
 say "Android SDK (command-line tools, platform 34, build-tools 34)"

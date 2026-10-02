@@ -22,7 +22,7 @@ dependencies {
 sourceSets { main { kotlin.srcDir("src") } }
 K
 cp "$A"/core/{Native,Events,Json,Core}.kt "$T/src/app/revizor/core/"
-cp "$A"/sender/{CodecCaps,VideoEncoder,AudioCapture,DeviceMonitor,CaptureService,SenderController}.kt "$T/src/app/revizor/sender/"
+cp "$A"/sender/{CodecCaps,VideoEncoder,AudioCapture,DeviceMonitor,CaptureService,SenderController,FrameSink}.kt "$T/src/app/revizor/sender/"
 cp "$A"/receiver/{VideoDecoder,AudioPlayer,ReceiverController}.kt "$T/src/app/revizor/receiver/"
 cp "$A"/benchmark/Benchmark.kt "$T/src/app/revizor/benchmark/"
 cp "$A"/update/{Updater,InstallResultReceiver,Prefs}.kt "$T/src/app/revizor/update/"
@@ -44,7 +44,8 @@ python3 - "$ROOT" <<'P'
 import re, sys
 root = sys.argv[1]
 k = open(f"{root}/android/app/src/main/java/app/revizor/core/Native.kt").read()
-r = open(f"{root}/core/crates/revizor-jni/src/lib.rs").read()
+import glob
+r = "".join(open(f).read() for f in glob.glob(f"{root}/core/crates/revizor-jni/src/*.rs"))
 ext = set(re.findall(r"external fun (\w+)\(", k)); sym = set(re.findall(r"Java_app_revizor_core_Native_(\w+)", r))
 assert ext == sym, f"JNI mismatch: kotlin-only={ext-sym} rust-only={sym-ext}"
 print(f"JNI symbols match ({len(ext)}).")

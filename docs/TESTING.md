@@ -2,7 +2,8 @@
 
 ## Automated suite (`cd core && cargo test --workspace`)
 
-112 tests (111 run by default + the opt-in soak), ~20 s:
+171 tests in the workspace (170 run by default + the opt-in soak), plus 7 in the standalone Windows sender project;
+about 45 s of test time once compiled:
 
 | Crate | Tests | What they prove |
 |---|---|---|
@@ -12,7 +13,34 @@
 | `revizor-adaptive` | 20 | bitrate-before-tier ordering, dwell/cooldown, **no flapping on an oscillating link, flap penalty doubles the next upgrade wait**, gradual recovery, thermal steps + slow release, critical → floor, unknown thermal ignored, receiver overheating, low battery/charging, encoder/decoder overload with reason, custom locked tier/bitrate, FEC hysteresis and FEC-aware video bitrate, ladders per profile and ceiling, global bitrate cap |
 | `revizor-transport` | 7 | UDP loopback, TCP framing/coalescing, impaired-link simulator (delay, loss %, bandwidth + queue, blackout), LAN discovery request/response over real sockets |
 | `revizor-session` | 17 | clock sync maths; **end-to-end sessions** (see below); real-UDP loopback stream |
-| `revizor-win-sender` | 1 | source id parsing (everything else is Windows-only) |
+| `revizor-cast` | 58 | TV casting without an app: MPEG-TS muxer, HLS, HTTP server, SSDP/UPnP/mDNS/CASTV2, sessions against simulated TVs, **ffmpeg as an independent decoder/player** (see below) |
+| `revizor-jni` | 1 | host build of the JNI crate (symbol parity with Kotlin is checked by `tools/android-typecheck.sh`) |
+| `revizor-win-sender` (own project) | 7 | source id parsing; controller logic: TV entries need no pairing, a paired Revizor TV is listed once, remembered-for-30 s list merge, TV-gone error, one background scan at a time (the capture path is Windows-only) |
+
+### TV casting tests (`crates/revizor-cast`)
+
+* **`tests/mux_fixture.rs` (3):** a real libx264 + AAC fixture is muxed to MPEG-TS and `ffprobe` must report one H.264 and one AAC
+  stream without complaints, `ffmpeg` must decode it with `-xerror`, timestamps must be strictly increasing at 1/30 s with
+  keyframes flagged on exactly the IDR frames, and a stream that starts at a later keyframe (a TV joining late) must decode.
+* **`tests/ffmpeg_client.rs` (2):** ffmpeg, acting as the TV, plays our **live** HLS playlist and the progressive TS in real
+  time from the real HTTP server (frames counted, no decoder errors, quick start).
+* **`tests/session_e2e.rs` (11):** whole sessions against `FakeDlnaTv` / `FakeChromecast`: DLNA end to end; a TV that refuses
+  `Play`; a TV that never fetches (honest timeout message); stop pressed on the remote; no picture from the encoder; Chromecast
+  end to end over HLS; Chromecast error and load failure; an unreachable Chromecast falling back to DLNA; every method failing
+  (the user is told why *each* one failed); a TV fetching from an
+  unexpected address (blocked and explained); discovery of a fake TV over real sockets.
+* **`tests/cast_tls.rs` (1):** CASTV2 over real TLS against a self-signed fake Chromecast.
+* **unit tests (41):** TS packets (CRC, PSI/AUD/PCR on IDR, cached SPS/PPS, continuity counters and exact payloads for large
+  frames, stuffing for tiny ones, audio held back until a time base exists, repaired non-increasing timestamps, keep-alive only
+  when idle); HLS (cuts only at keyframes, real durations, bounded window, never starts mid-GOP, runaway segment capped);
+  server (HLS flow with CORS, token + IP allow-list, progressive viewer starts at a keyframe, HEAD, slow viewer dropped with
+  bounded memory, viewer limit); XML/SOAP/DIDL escaping; SSDP and mDNS parsing (name-compression loops, audio-only speakers
+  excluded, end-to-end discovery with follow-up queries); CASTV2 protobuf (garbage input, partial frames, oversized frames);
+  merge-by-IP with Cast first.
+
+ffmpeg tests skip with a message when ffmpeg is not installed; **CI installs it and sets `REVIZOR_REQUIRE_FFMPEG=1`** so they
+cannot be skipped silently.
+
 
 ### End-to-end session tests (`crates/revizor-session/tests`)
 
@@ -52,7 +80,10 @@ link — **not** end-to-end glass-to-glass numbers on real phones; hours-long ru
 ## Not covered by automated tests
 
 Real encoders/decoders, GPU capture, Wi-Fi, thermal throttling on a phone, battery drain, USB tethering, sleep/wake of a
-real device, the Compose UI and the Gradle build. These need hardware; use the checklist below on first bring-up.
+real device, the Compose UI and the Gradle build. **Real TVs and Chromecasts** (vendor quirks in DLNA/Cast, how much a given TV
+buffers, which models accept live MPEG-TS) — ffmpeg and the simulated devices only prove that our streams and our side of the
+protocols are well-formed. Also not covered: `ring`/TLS compiled for Android (built by the `android-native` CI job, not here),
+the Windows firewall prompt. These need hardware; use the checklist below on first bring-up.
 
 ### Device bring-up checklist
 
@@ -63,3 +94,6 @@ real device, the Compose UI and the Gradle build. These need hardware; use the c
 5. Windows sender with a hardware GPU: confirm "GPU encoder" in the UI; switch between screen and window sources.
 6. Leave a session running for hours with `adb shell dumpsys meminfo app.revizor` snapshots; check no growth.
 7. Release build: publish a higher `versionCode` and confirm the in-app update installs.
+8. **TV casting:** with a Chromecast / Google TV, then a Samsung/LG/Sony DLNA TV: confirm the TV appears in both apps, the cast
+   starts, and note the real delay (film the TV next to a running clock); rotate the phone; turn the screen off/on; press Stop on
+   the TV remote; check *Blocked requests* stays 0. Record which models work in `docs/CASTING.md`.

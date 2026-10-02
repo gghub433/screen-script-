@@ -5,20 +5,15 @@
 //! NOTE: this module has been type-checked for `x86_64-pc-windows-*` but has not
 //! been exercised on real GPUs by the authors of this commit; see docs/TESTING.md.
 
-
-
-
 mod capture;
 mod convert;
 mod encoder;
 mod enumerate;
 mod runner;
 
-
 pub use enumerate::list_sources;
 pub use encoder::probe_hardware_h264;
-pub use runner::WinPipeline;
-
+pub use runner::{Mode, WinPipeline};
 
 pub(crate) fn hr_err(ctx: &str, e: windows::core::Error) -> String {
     format!("{ctx}: {e}")

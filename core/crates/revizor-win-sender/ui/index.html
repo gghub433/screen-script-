@@ -46,6 +46,10 @@ button.small{padding:5px 11px;font-size:13px}
 .empty b{display:block;color:var(--text);margin-bottom:4px}
 .tag{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
 .tag.ok{color:var(--ok);border-color:#46d68c55} .tag.pair{color:var(--warn);border-color:#ffb45466}
+.tag.tv{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.help{margin:10px 2px 0;font-size:12.5px;color:var(--muted)}
+.spin{display:inline-block;width:10px;height:10px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--accent);vertical-align:-1px;margin-right:6px}
+@media (prefers-reduced-motion:no-preference){.spin{animation:sp .9s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}}
 .hero{text-align:center;padding:30px 16px 22px}
 .hero .big{font-size:22px;font-weight:700;margin-bottom:6px}
 .chips{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin:14px 0}
@@ -84,6 +88,7 @@ dialog::backdrop{background:#000a}
     <h2>Send to</h2>
     <div class="card" id="receivers"></div>
     <div class="flex" style="margin-top:10px"><button class="small" id="rescan">Search again</button><span class="s" id="scanNote"></span></div>
+    <p class="help" id="listHelp"></p>
 
     <h2>Share</h2>
     <div class="card">
@@ -91,7 +96,8 @@ dialog::backdrop{background:#000a}
       <div id="sources"></div>
     </div>
 
-    <div style="margin-top:22px"><button class="primary" id="start" disabled>Start sharing</button></div>
+    <p class="help" id="startHelp" style="margin-top:18px"></p>
+    <div style="margin-top:10px"><button class="primary" id="start" disabled>Start sharing</button></div>
   </div>
 
   <div id="live" style="display:none">
@@ -120,7 +126,7 @@ dialog::backdrop{background:#000a}
           <option value="low-latency">Lowest delay</option>
           <option value="battery">Save power</option>
         </select></div>
-      <p class="s">Resolution, frame rate and bitrate always adapt automatically to the network and the devices.</p>
+      <p class="s">Resolution, frame rate and bitrate always adapt automatically to the network and the devices. The profile applies to receivers with the Revizor app; a TV without the app always gets a fixed picture (up to 1080p, 30 fps).</p>
       <div class="flex" style="margin-top:14px"><input id="ip" placeholder="Receiver IP address" size="18"><button class="small" id="addip">Connect by IP</button></div>
       <h2 style="margin-top:22px">Paired receivers</h2>
       <div id="trusted"></div>
@@ -157,14 +163,23 @@ const tvSvg='<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke=
 function renderReceivers(){
   const el=$("receivers");
   if(!S.receivers.length){
-    el.innerHTML='<div class="empty"><b>No receivers found</b>Open Revizor on your TV or phone. Both devices must be on the same network.</div>';
+    el.innerHTML=S.scanning
+      ?'<div class="empty"><b><span class="spin"></span>Searching your network…</b>Looking for TVs and other devices on the same Wi-Fi or cable.</div>'
+      :'<div class="empty"><b>Nothing found</b>Switch the TV on and make sure it is on the same Wi-Fi or network as this PC. Most TVs need no app. Then press “Search again”.</div>';
     return;
   }
   el.innerHTML=S.receivers.map(r=>{
     const sel=selRecv===r.id?" sel":"";
-    const tag=r.trusted?'<span class="tag ok">Ready</span>':(r.pairing_open?'<span class="tag pair">Needs pairing</span>':'<span class="tag">Open pairing on the receiver</span>');
-    const act=(!r.trusted&&r.pairing_open)?'<button class="small" data-pair="'+esc(r.id)+'">Pair</button>':"";
-    return '<div class="row'+sel+'" data-r="'+esc(r.id)+'"><div class="ico">'+tvSvg+'</div><div class="grow"><div class="t">'+esc(r.name)+'</div><div class="s">'+esc(r.ip)+' · up to '+r.max_width+'×'+r.max_height+' @ '+r.max_fps+' fps</div></div>'+tag+act+'</div>';
+    let tag,act="",sub;
+    if(r.kind==="tv"){
+      tag='<span class="tag tv">No app needed</span>';
+      sub=[r.details,r.ip,(r.methods||[]).join(" + ")].filter(Boolean).map(esc).join(" · ");
+    }else{
+      tag=r.trusted?'<span class="tag ok">Ready</span>':(r.pairing_open?'<span class="tag pair">Needs pairing</span>':'<span class="tag">Open pairing on the receiver</span>');
+      act=(!r.trusted&&r.pairing_open)?'<button class="small" data-pair="'+esc(r.id)+'">Pair</button>':"";
+      sub=esc(r.ip)+' · Revizor app · up to '+r.max_width+'×'+r.max_height+' @ '+r.max_fps+' fps';
+    }
+    return '<div class="row'+sel+'" data-r="'+esc(r.id)+'"><div class="ico">'+tvSvg+'</div><div class="grow"><div class="t">'+esc(r.name)+'</div><div class="s">'+sub+'</div></div>'+tag+act+'</div>';
   }).join("");
 }
 function renderSources(){
@@ -174,6 +189,43 @@ function renderSources(){
     return '<div class="row'+sel+'" data-s="'+esc(s.id)+'"><div class="ico">'+(s.kind==="monitor"?monitorSvg:winSvg)+'</div><div class="grow"><div class="t">'+esc(s.name)+'</div><div class="s">'+s.width+'×'+s.height+(s.refresh_hz?' · '+s.refresh_hz+' Hz':'')+'</div></div></div>';
   }).join(""):'<div class="empty"><b>'+(S.platform==="windows"?"Nothing to share":"Screen sharing works on Windows")+'</b></div>';
 }
+const isTv=id=>{const r=S&&S.receivers.find(x=>x.id===id);return !!r&&r.kind==="tv"};
+const LIMITS={Network:"the network",Thermal:"temperature protection",Battery:"battery saving",EncoderOverload:"this PC being busy",DecoderOverload:"the receiver being busy",Profile:"the chosen profile"};
+function renderLive(st){
+  const tv=st.mode==="tv";
+  const pill=$("status");
+  let txt;
+  if(st.state==="streaming"){txt="Live";pill.classList.add("live")}
+  else if(st.state==="failed"){txt="Problem";pill.classList.add("bad")}
+  else {txt=st.state==="reconnecting"?"Reconnecting…":"Connecting…";pill.classList.add("warn")}
+  const verb=tv?"Casting":"Sharing";
+  $("liveTitle").textContent=st.state==="streaming"?verb+" to "+st.receiver:(st.state==="failed"?verb+" stopped":txt.replace("…","")+" to "+st.receiver+"…");
+  $("liveSub").textContent=st.state==="streaming"
+    ?(tv?"The TV is playing your screen with its own player, so expect a delay of a few seconds. The picture is not end-to-end encrypted: it is sent over your local network and only this TV is allowed to fetch it."
+        :"Your screen is encrypted end-to-end on your local network.")
+    :"";
+  const chips=[];
+  if(st.width)chips.push(st.height+"p · "+st.fps+" fps");
+  if(st.bitrate_mbps)chips.push(st.bitrate_mbps.toFixed(1)+" Mbit/s");
+  if(st.encoder&&st.encoder.name)chips.push(st.encoder.hardware?"GPU encoder":"Software encoder");
+  if(tv&&st.method)chips.push("via "+st.method);
+  $("liveChips").innerHTML=chips.map(c=>'<span class="chip">'+esc(c)+'</span>').join("");
+  let note="";
+  if(st.error)note+='<div class="notice err">'+esc(st.error)+'</div>';
+  if(st.notice)note+='<div class="notice">'+esc(st.notice)+'</div>';
+  if(st.encoder&&st.encoder.name&&!st.encoder.hardware)note+='<div class="notice">No hardware video encoder was found, so the CPU is encoding. Expect higher load and delay.</div>';
+  const why=LIMITS[st.limited_by]||"";
+  if(why)note+='<div class="notice">Quality was lowered because of '+why+'. It will recover automatically.</div>';
+  $("liveNote").innerHTML=note;
+  $("stop").textContent=st.state==="failed"?"Back":"Stop sharing";
+  const x=st.stats||{};
+  const cells=tv
+    ?[["Stream to TV",fmt(x.stream_mbps,"Mbit/s",2)],["Delivered to TV",fmt(x.sent_mb,"MB",1)],["TV connections",x.viewers??"—"],["Frames encoded",x.frames??"—"],["Segments",x.segments??"—"],["Playlist requests",x.playlist_requests??"—"],["Segment requests",x.segment_requests??"—"],["Blocked requests",x.blocked??"—"],["Running",x.uptime_s==null?"—":fmtTime(x.uptime_s)]]
+    :[["Delay (glass to glass)",fmt(x.latency_ms,"ms")],["Round trip",fmt(x.rtt_ms,"ms")],["Packet loss",fmt(x.loss_pct,"%")],["Jitter",fmt(x.jitter_ms,"ms")],["Sending",fmt(x.sent_mbps,"Mbit/s",2)],["Encode time",fmt(x.encode_ms,"ms")],["Receiver decode",fmt(x.decode_ms,"ms")],["Frames sent",x.frames_sent??"—"],["Dropped on PC",x.frames_dropped??"—"],["Repaired packets",x.retransmitted??"—"],["Keyframes",x.keyframes??"—"],["Error protection",x.fec_k?("1 in "+x.fec_k):"off"]];
+  $("stats").innerHTML=cells.map(c=>'<div class="kv"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'</div></div>').join("")
+    +(tv?'<p class="s" style="grid-column:1/-1;margin:6px 0 0">A TV cannot report delay, loss or decode time, so those are not shown. “Blocked requests” counts attempts by other devices to fetch the picture; it should stay at 0.</p>':"");
+}
+const fmtTime=t=>{t=Math.floor(t);const m=Math.floor(t/60),h=Math.floor(m/60);return h?h+" h "+(m%60)+" min":(m?m+" min "+(t%60)+" s":t+" s")};
 function render(){
   const st=S.stream;
   const live=st&&st.state!=="stopped";
@@ -182,29 +234,18 @@ function render(){
   const pill=$("status");pill.className="pill";
   let txt="Ready";
   if(live){
-    if(st.state==="streaming"){txt="Live";pill.classList.add("live")}
-    else if(st.state==="failed"){txt="Problem";pill.classList.add("bad")}
-    else {txt=st.state==="reconnecting"?"Reconnecting…":"Connecting…";pill.classList.add("warn")}
-    $("liveTitle").textContent=st.state==="streaming"?"Sharing to "+st.receiver:(st.state==="failed"?"Sharing stopped":txt.replace("…","")+" to "+st.receiver+"…");
-    $("liveSub").textContent=st.state==="streaming"?"Your screen is encrypted end-to-end on your local network.":"";
-    const chips=[];
-    if(st.width)chips.push(st.height+"p · "+st.fps+" fps");
-    if(st.bitrate_mbps)chips.push(st.bitrate_mbps.toFixed(1)+" Mbit/s");
-    if(st.encoder)chips.push(st.encoder.hardware?"GPU encoder":"Software encoder");
-    $("liveChips").innerHTML=chips.map(c=>'<span class="chip">'+esc(c)+'</span>').join("");
-    let note="";
-    if(st.error)note+='<div class="notice err">'+esc(st.error)+'</div>';
-    if(st.encoder&&!st.encoder.hardware)note+='<div class="notice">No hardware video encoder was found, so the CPU is encoding. Expect higher load and delay.</div>';
-    if(st.limited_by){
-      const why={Network:"the network",Thermal:"temperature protection",Battery:"battery saving",EncoderOverload:"this PC being busy",DecoderOverload:"the receiver being busy",Recovery:"",Profile:"the chosen profile"}[st.limited_by]||"";
-      if(why)note+='<div class="notice">Quality was lowered because of '+why+'. It will recover automatically.</div>';
-    }
-    $("liveNote").innerHTML=note;
-    const x=st.stats||{};
-    const cells=[["Delay (glass to glass)",fmt(x.latency_ms,"ms")],["Round trip",fmt(x.rtt_ms,"ms")],["Packet loss",fmt(x.loss_pct,"%")],["Jitter",fmt(x.jitter_ms,"ms")],["Sending",fmt(x.sent_mbps,"Mbit/s",2)],["Encode time",fmt(x.encode_ms,"ms")],["Receiver decode",fmt(x.decode_ms,"ms")],["Frames sent",x.frames_sent??"—"],["Dropped on PC",x.frames_dropped??"—"],["Repaired packets",x.retransmitted??"—"],["Keyframes",x.keyframes??"—"],["Error protection",x.fec_k?("1 in "+x.fec_k):"off"]];
-    $("stats").innerHTML=cells.map(c=>'<div class="kv"><div class="k">'+c[0]+'</div><div class="v">'+c[1]+'</div></div>').join("");
+    renderLive(st);
+    txt=st.state==="streaming"?"Live":(st.state==="failed"?"Problem":(st.state==="reconnecting"?"Reconnecting…":"Connecting…"));
   } else {
     renderReceivers();renderSources();
+    $("scanNote").innerHTML=S.scanning?'<span class="spin"></span>Searching…':"";
+    const anyTv=S.receivers.some(r=>r.kind==="tv");
+    $("listHelp").textContent=anyTv
+      ?"Devices marked “No app needed” play your screen with their built-in player: nothing to install, but the delay is a few seconds and the picture is not end-to-end encrypted. For the lowest delay and full encryption, install Revizor on the receiving device."
+      :"Nothing to install on a TV: if it supports Chromecast, Google Cast or DLNA it will show up here. Both devices must be on the same network.";
+    $("startHelp").textContent=selRecv&&isTv(selRecv)
+      ?"Casting to a TV: delay of about 1–6 seconds, not end-to-end encrypted. Not every TV model supports live streams."
+      :"";
     $("stats").innerHTML='<div class="s">Start sharing to see live measurements.</div>';
     const ok=selRecv&&selSrc&&S.receivers.find(r=>r.id===selRecv&&r.trusted)&&S.sources.find(s=>s.id===selSrc);
     $("start").disabled=!ok;
@@ -222,7 +263,8 @@ document.addEventListener("click",async e=>{
   if(t.dataset.s){selSrc=t.dataset.s;render();return}
 });
 $("kind").onclick=e=>{const b=e.target.closest("button");if(!b)return;kind=b.dataset.k;[...$("kind").children].forEach(c=>c.classList.toggle("on",c===b));renderSources()};
-$("rescan").onclick=async()=>{$("scanNote").textContent="Searching…";try{await api("/api/scan",{})}catch(e){toast(e.message)}$("scanNote").textContent="";refresh()};
+const rescan=async()=>{try{await api("/api/scan",{})}catch(e){toast(e.message)}refresh()};
+$("rescan").onclick=rescan;
 $("addip").onclick=async()=>{try{await api("/api/manual",{ip:$("ip").value.trim()});refresh()}catch(e){toast(e.message)}};
 $("start").onclick=async()=>{try{await api("/api/start",{receiver:selRecv,source:selSrc,profile:$("profile").value});refresh()}catch(e){toast(e.message)}};
 $("stop").onclick=async()=>{await api("/api/stop",{});refresh()};
@@ -230,6 +272,8 @@ $("pairCancel").onclick=()=>$("pairDlg").close();
 $("pairOk").onclick=async()=>{try{await api("/api/pair",{id:pairTarget.id,pin:$("pin").value.trim()});$("pairDlg").close();selRecv=pairTarget.id;refresh()}catch(e){toast(e.message)}};
 $("pin").addEventListener("keydown",e=>{if(e.key==="Enter")$("pairOk").click()});
 refresh();setInterval(refresh,1000);
+// Keep looking while the setup screen is open, so a TV that is switched on later simply appears.
+setInterval(()=>{if(S&&!S.scanning&&(!S.stream||S.stream.state==="stopped")&&!document.hidden&&!$("pairDlg").open)rescan()},12000);
 </script>
 </body>
 </html>

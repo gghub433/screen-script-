@@ -20,7 +20,7 @@ enum class AudioMode { None, System, Mic, Both }
  * System audio (AudioPlaybackCapture) and/or microphone → AAC-LC (MediaCodec) → ADTS frames → core.
  * Frames carry capture timestamps on the session clock so the receiver can align them with video.
  */
-class AudioCapture(private val mode: AudioMode, private val projection: MediaProjection?, private val sender: Long) {
+class AudioCapture(private val mode: AudioMode, private val projection: MediaProjection?, private val sink: FrameSink) {
     private val tag = "Audio"
     private val rate = 48_000
     private var system: AudioRecord? = null
@@ -92,7 +92,7 @@ class AudioCapture(private val mode: AudioMode, private val projection: MediaPro
                     out.put(adts(info.size))
                     ob.position(info.offset).limit(info.offset + info.size)
                     out.put(ob)
-                    Native.senderSubmitAudio(sender, info.presentationTimeUs, out, 0, info.size + 7)
+                    sink.audio(info.presentationTimeUs, out, 0, info.size + 7)
                 }
                 c.releaseOutputBuffer(oi, false)
             }

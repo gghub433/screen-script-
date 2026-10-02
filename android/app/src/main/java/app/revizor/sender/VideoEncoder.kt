@@ -17,7 +17,7 @@ import java.nio.ByteBuffer
  * Hardware encoder fed by a Surface: `VirtualDisplay → Surface → MediaCodec` stays on the GPU/codec
  * side, no Bitmap and no CPU copy of pixels exist anywhere in this path.
  */
-class VideoEncoder(private val params: StreamParams, private val sender: Long) {
+class VideoEncoder(private val params: StreamParams, private val sink: FrameSink, private val tuning: Tuning = Tuning()) {
     private val tag = "Encoder"
     private val thread = HandlerThread("rvz-enc-out").apply { start() }
     private val handler = Handler(thread.looper)
@@ -41,7 +41,7 @@ class VideoEncoder(private val params: StreamParams, private val sender: Long) {
             setInteger(MediaFormat.KEY_BIT_RATE, params.videoBps)
             setInteger(MediaFormat.KEY_FRAME_RATE, params.fps)
             // Keyframes are produced on demand (loss, new viewer, config change); this is only the safety net.
-            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 10)
+            setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, tuning.iFrameIntervalSec)
             val vc = cap.info.getCapabilitiesForType(params.codec.mime).encoderCapabilities
             setInteger(
                 MediaFormat.KEY_BITRATE_MODE,
@@ -51,6 +51,11 @@ class VideoEncoder(private val params: StreamParams, private val sender: Long) {
             setInteger(MediaFormat.KEY_PRIORITY, 0) // real-time
             if (Build.VERSION.SDK_INT >= 30) setInteger(MediaFormat.KEY_LOW_LATENCY, 1)
             setInteger(MediaFormat.KEY_OPERATING_RATE, params.fps)
+            if (tuning.preferHighProfile && params.codec == app.revizor.core.Codec.H264 &&
+                cap.info.getCapabilitiesForType(params.codec.mime).profileLevels.any { it.profile == MediaCodecInfo.CodecProfileLevel.AVCProfileHigh }
+            ) {
+                setInteger(MediaFormat.KEY_PROFILE, MediaCodecInfo.CodecProfileLevel.AVCProfileHigh)
+            }
             if (Build.VERSION.SDK_INT >= 29) setInteger(MediaFormat.KEY_MAX_B_FRAMES, 0)
             // A static screen produces no new frames; repeat the last one so keyframe requests and
             // liveness keep working (costs a few hundred bytes per repeat).
@@ -84,7 +89,7 @@ class VideoEncoder(private val params: StreamParams, private val sender: Long) {
             val key = info.flags and MediaCodec.BUFFER_FLAG_KEY_FRAME != 0
             // Capture→encoder-output time, measured on the same CLOCK_MONOTONIC as the surface timestamps.
             val latencyUs = (Native.nowUs() - info.presentationTimeUs).coerceIn(0, 2_000_000)
-            Native.senderEncodeTime(sender, latencyUs.toInt())
+            sink.encodeTime(latencyUs.toInt())
 
             val cfg = config
             val needsCfg = key && cfg != null && !startsWithParameterSets(buf, info)
@@ -95,9 +100,9 @@ class VideoEncoder(private val params: StreamParams, private val sender: Long) {
                 if (needsCfg) scratch.put(cfg!!)
                 buf.position(info.offset).limit(info.offset + info.size)
                 scratch.put(buf)
-                Native.senderSubmitVideo(sender, params.epoch, info.presentationTimeUs, key, scratch, 0, total)
+                sink.video(params.epoch, info.presentationTimeUs, key, scratch, 0, total)
             } else {
-                Native.senderSubmitVideo(sender, params.epoch, info.presentationTimeUs, key, buf, info.offset, info.size)
+                sink.video(params.epoch, info.presentationTimeUs, key, buf, info.offset, info.size)
             }
         } finally {
             if (!released) runCatching { c.releaseOutputBuffer(index, false) }

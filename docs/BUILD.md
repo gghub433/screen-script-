@@ -3,7 +3,7 @@
 Repository layout:
 
 ```
-core/                    Rust workspace (protocol, crypto, media, adaptive, transport, session, JNI, dev receiver)
+core/                    Rust workspace (protocol, crypto, media, adaptive, transport, session, cast (TV casting), JNI, dev receiver)
 core/crates/revizor-win-sender/   Windows sender (standalone Cargo project)
 android/                 Android app (Kotlin, Jetpack Compose) – loads librevizor_core.so
 tools/                   termux-build.sh, android-typecheck.sh
@@ -18,7 +18,13 @@ cargo test --workspace            # ~20 s: unit, scenario, end-to-end and UDP-lo
 cargo build --release -p revizor-recv-cli   # headless receiver for development
 ```
 
-Needs Rust ≥ 1.75. No system libraries are required.
+Needs Rust ≥ 1.75. No system libraries are required. Two groups of tests use **ffmpeg/ffprobe** as an independent decoder of the
+TV-casting streams; they are skipped with a message when ffmpeg is not installed (`sudo apt install ffmpeg`; CI installs it and sets
+`REVIZOR_REQUIRE_FFMPEG=1` so a missing tool fails the run instead).
+
+TLS for Google Cast (`rustls` + `ring`) is on by default through the `tls` cargo feature of `revizor-cast`, `revizor-jni` and the
+Windows sender. `ring` compiles a little C/assembly, so a C compiler for the *target* is required: MSVC on Windows, the NDK
+(through `cargo-ndk`) or Termux's `clang` on Android. Building the *host* needs nothing special.
 
 ## 2. Windows sender
 
@@ -31,11 +37,14 @@ cargo build --release          # -> target\release\revizor-sender.exe
 ```
 
 It starts a local UI on `127.0.0.1` and opens it as an Edge "app" window. Data directory: `%APPDATA%\Revizor`
-(`REVIZOR_HOME` overrides). From Linux you can type-check it:
+(`REVIZOR_HOME` overrides). The first cast to a TV makes Windows Defender Firewall ask whether to allow the app on private
+networks — allow it, the TV connects back to this PC to fetch the picture. From Linux you can type-check it (without TLS,
+because `ring` cannot be compiled for Windows from Linux without a MinGW C compiler):
 
 ```bash
 rustup target add x86_64-pc-windows-gnu
-cd core/crates/revizor-win-sender && cargo check --target x86_64-pc-windows-gnu
+cd core/crates/revizor-win-sender && cargo check --target x86_64-pc-windows-gnu --no-default-features
+cargo test --no-default-features        # controller logic runs on any host
 ```
 
 ## 3. Android app
@@ -90,7 +99,9 @@ update an installed Revizor (Android would require uninstalling it first).
 
 ### c) GitHub Actions
 
-`ci.yml` runs on every push (tests, Android/Windows type-checks). `release.yml` runs on tags `v*` (or manually) and
+`ci.yml` runs on every push: the Rust tests (with ffmpeg), Android/Windows type-checks, the Kotlin platform-API type-check, an
+**NDK build of the native library with TLS** (`android-native`, the first place `ring` is compiled for Android) and a real MSVC
+build + tests of the Windows sender. `release.yml` runs on tags `v*` (or manually) and
 publishes the signed APK + `.sha256` and the Windows sender to a GitHub Release, which is what the in-app updater reads.
 Add secrets `REVIZOR_KEYSTORE_B64` (`base64 -w0 release.jks`) and `REVIZOR_KEYSTORE_PASSWORD`.
 

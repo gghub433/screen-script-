@@ -7,6 +7,7 @@ members = [
   "crates/revizor-adaptive",
   "crates/revizor-transport",
   "crates/revizor-session",
+  "crates/revizor-cast",
   "crates/revizor-recv-cli",
   "crates/revizor-jni",
 ]
@@ -37,6 +38,7 @@ revizor-media = { path = "crates/revizor-media" }
 revizor-adaptive = { path = "crates/revizor-adaptive" }
 revizor-transport = { path = "crates/revizor-transport" }
 revizor-session = { path = "crates/revizor-session" }
+revizor-cast = { path = "crates/revizor-cast", default-features = false }
 
 [profile.release]
 opt-level = 3

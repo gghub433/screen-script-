@@ -21,6 +21,22 @@ Direct device-to-device on the LAN. There is no server, relay or account.
   datagrams; fallback when UDP is blocked and the way to use USB, see below). QUIC is intentionally *not* implemented
   yet; the trait is where it would plug in.
 
+## Standard TVs (Chromecast / DLNA) — ports and traffic
+
+Used only when you pick a TV tagged "No app needed" ([CASTING.md](CASTING.md)); the Revizor protocol above is not involved.
+
+| Direction | Traffic | Purpose |
+|---|---|---|
+| out | UDP multicast `224.0.0.251:5353` (mDNS query, ephemeral source port; replies arrive by unicast) | find Chromecast / Google TV / Android TV |
+| out | UDP multicast `239.255.255.250:1900` (SSDP `M-SEARCH`; replies by unicast) | find DLNA `MediaRenderer`s, then HTTP `GET` of their device description |
+| out | TCP `<tv>:8009`, TLS (CASTV2) | Google Cast control |
+| out | TCP to the TV's UPnP control URL (port chosen by the TV), HTTP SOAP | DLNA control (`SetAVTransportURI`, `Play`, `Stop`, `GetTransportInfo`) |
+| **in** | TCP, ephemeral port on all interfaces, answered **only for the TV's IP** and only for `/<128-bit token>/…` | the TV pulls `live.m3u8` + `seg-N.ts` (Cast) or `live.ts` (DLNA) |
+
+The inbound port is why Windows shows its firewall prompt on the first cast: allow it on **private** networks. Guest
+networks / AP isolation block discovery and the TV's connection back to the sender. Bitrate is 3–8 Mbit/s (Windows) or
+2.5–8 Mbit/s (Android), fixed for the whole session; there is no adaptation, FEC or retransmission on this path.
+
 ## Wi-Fi, Ethernet, USB
 
 * **Wi-Fi / Ethernet**: same code path. Wired Ethernet on either end gives the lowest jitter; 5 GHz/6 GHz Wi-Fi is

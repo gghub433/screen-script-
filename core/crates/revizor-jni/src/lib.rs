@@ -9,6 +9,7 @@
 //!   Kind numbers are documented in `app/revizor/core/Events.kt`.
 //! * Nothing here invents numbers: every statistic comes from the session objects.
 
+mod cast;
 mod caps;
 mod events;
 mod stats;
@@ -47,7 +48,7 @@ fn jstr(env: &mut JNIEnv, s: &JString) -> String {
     env.get_string(s).map(|s| s.into()).unwrap_or_default()
 }
 
-fn int_vec(env: &mut JNIEnv, a: &JIntArray) -> Vec<i32> {
+pub(crate) fn int_vec(env: &mut JNIEnv, a: &JIntArray) -> Vec<i32> {
     let n = env.get_array_length(a).unwrap_or(0) as usize;
     let mut v = vec![0i32; n];
     let _ = env.get_int_array_region(a, 0, &mut v);

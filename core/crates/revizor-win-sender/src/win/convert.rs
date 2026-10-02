@@ -6,7 +6,7 @@ use super::capture::D3d;
 use super::hr_err;
 use std::mem::ManuallyDrop;
 use windows::core::Interface;
-use windows::Win32::Foundation::{RECT, TRUE};
+use windows::Win32::Foundation::{BOOL, RECT, TRUE};
 use windows::Win32::Graphics::Direct3D11::*;
 use windows::Win32::Graphics::Dxgi::Common::{DXGI_FORMAT_NV12, DXGI_RATIONAL, DXGI_SAMPLE_DESC};
 
@@ -26,7 +26,8 @@ pub struct Converter {
 }
 
 impl Converter {
-    pub fn new(d3d: &D3d, in_w: u32, in_h: u32, out_w: u32, out_h: u32, fps: u32) -> Result<Self, String> {
+    /// `fit`: keep the source aspect ratio inside the fixed output size (black bars) instead of stretching.
+    pub fn new(d3d: &D3d, in_w: u32, in_h: u32, out_w: u32, out_h: u32, fps: u32, fit: bool) -> Result<Self, String> {
         unsafe {
             let vdev: ID3D11VideoDevice = d3d.device.cast().map_err(|e| hr_err("ID3D11VideoDevice (GPU without video support?)", e))?;
             let vctx: ID3D11VideoContext = d3d.context.cast().map_err(|e| hr_err("ID3D11VideoContext", e))?;
@@ -50,7 +51,15 @@ impl Converter {
             vctx.VideoProcessorSetOutputColorSpace(&processor, &out_cs);
             let out_rect = RECT { left: 0, top: 0, right: out_w as i32, bottom: out_h as i32 };
             vctx.VideoProcessorSetOutputTargetRect(&processor, TRUE, Some(&out_rect));
-            vctx.VideoProcessorSetStreamDestRect(&processor, 0, TRUE, Some(&out_rect));
+            let dest = if fit {
+                let (x, y, w, h) = revizor_proto::geometry::letterbox(in_w, in_h, out_w, out_h);
+                RECT { left: x as i32, top: y as i32, right: (x + w) as i32, bottom: (y + h) as i32 }
+            } else {
+                out_rect
+            };
+            vctx.VideoProcessorSetStreamDestRect(&processor, 0, TRUE, Some(&dest));
+            let black = D3D11_VIDEO_COLOR { Anonymous: D3D11_VIDEO_COLOR_0 { RGBA: D3D11_VIDEO_COLOR_RGBA { R: 0.0, G: 0.0, B: 0.0, A: 1.0 } } };
+            vctx.VideoProcessorSetOutputBackgroundColor(&processor, BOOL(0), &black);
 
             let mut ring = Vec::with_capacity(RING);
             for _ in 0..RING {

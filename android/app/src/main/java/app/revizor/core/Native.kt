@@ -46,6 +46,16 @@ object Native {
     external fun senderStats(h: Long): String
     external fun nowUs(): Long
 
+    // casting to TVs that have nothing of Revizor installed (Google Cast / DLNA)
+    /** One TV per line, tab-separated: name, ip, model, manufacturer, methods. */
+    external fun castScan(timeoutMs: Int): String
+    /** Events: 1 state (0 preparing, 1 starting, 2 playing, 3 buffering, 4 reconnecting, 5 stopped, 6 failed + text), 2 trying next method (text), 3 keyframe needed. */
+    external fun castStart(cb: Callback, ip: String, name: String, methods: String, hasAudio: Boolean): Long
+    external fun castStop(h: Long)
+    external fun castSubmitVideo(h: Long, ptsUs: Long, keyframe: Boolean, buf: ByteBuffer, offset: Int, len: Int): Boolean
+    external fun castSubmitAudio(h: Long, ptsUs: Long, buf: ByteBuffer, offset: Int, len: Int): Boolean
+    external fun castStats(h: Long): String
+
     // receiver
     external fun receiverStart(core: Long, cb: Callback, port: Int, name: String, codecCaps: IntArray, audioCaps: IntArray, tcp: Boolean): Long
     external fun receiverStop(h: Long)

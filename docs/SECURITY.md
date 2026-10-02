@@ -25,9 +25,28 @@ screen anyway), traffic analysis of packet sizes/timing, and physical access to 
 CPU cost: ChaCha20-Poly1305 is implemented in the audited RustCrypto crates and is cheap on every ARM core (no
 AES instruction dependency); at 25 Mbit/s the crypto is a few percent of one core.
 
+## TV casting mode (no Revizor on the receiver) — weaker guarantees
+
+When the target is a standard TV (Google Cast / DLNA, see [CASTING.md](CASTING.md)) the protections above **do not apply**:
+the TV's own player fetches an MPEG-TS/HLS stream over plain HTTP, so there is no pairing, no encryption and no replay
+protection. What Revizor does instead (`core/crates/revizor-cast`):
+
+* the stream URL contains a fresh 128-bit random token and the HTTP server answers **only the TV's IP address**; every
+  refused request is counted and shown ("Blocked requests") and explained if it stops the cast;
+* the server is bounded (≤ 4 viewers, ≤ 16 concurrent requests, per-viewer queue; a slow client is dropped) and exists only
+  while casting;
+* the Cast control channel is TLS, but the TV's certificate is **not verified** (Cast devices use device-specific certificates
+  and Revizor does not implement Google's device-authentication challenge), so a LAN attacker impersonating a Chromecast could
+  obtain the stream URL; DLNA control is unauthenticated HTTP by design;
+* anyone able to sniff your LAN (open Wi-Fi, a compromised router) can see the picture. Use a Revizor receiver for anything
+  sensitive; the app says so next to the TV list and while casting.
+
 ## Privacy
 
 * Screen and audio content only travels device → device, encrypted. There is no relay server and no account.
+* In TV casting mode the picture goes to the TV's own player on your LAN; Revizor sends nothing to the internet. Be aware that a
+  Google Cast TV loads Google's Default Media Receiver web app from the internet to play the stream, and what a TV vendor's
+  software does with the content it plays is outside Revizor's control.
 * The Android app's **only** internet request is the optional update check against the GitHub Releases API
   (a plain `GET` with the app's version in the User-Agent). It can be switched off in Settings → Updates.
   There is no analytics, crash reporting or telemetry SDK.
@@ -60,4 +79,5 @@ signing key like a password: anyone holding it can ship an update to every insta
 * The 6-digit PIN protects *pairing*; during the pairing window anyone on the LAN can try 5 guesses (1 in 200 000 to
   succeed per window) — the user sees the window and the "Paired with …" confirmation on the receiver.
 * Packet sizes and timing are visible and reveal activity (e.g. static screen vs video).
+* TV casting mode: unencrypted HTTP and no Cast device authentication (details above). Not suitable for sensitive content.
 * There is no key rotation inside one session; the packet counter is 64-bit so nonce reuse is not a practical concern.

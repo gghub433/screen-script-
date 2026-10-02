@@ -8,8 +8,14 @@ jobs:
   core:
     name: Rust core (tests)
     runs-on: ubuntu-latest
+    env:
+      # Fail (instead of silently skipping) when ffmpeg is missing: the TV-casting tests use it as an
+      # independent MPEG-TS / HLS demuxer and H.264 decoder.
+      REVIZOR_REQUIRE_FFMPEG: "1"
     steps:
       - uses: actions/checkout@v4
+      - name: ffmpeg (independent decoder for the casting tests)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: aarch64-linux-android,x86_64-pc-windows-gnu
@@ -21,23 +27,56 @@ jobs:
       - name: Unit + integration tests
         working-directory: core
         run: cargo test --workspace
-      - name: Core type-checks for Android
+      # `ring` (TLS for Google Cast) needs a C compiler for the *target*, which a plain Linux runner does not have for
+      # Android / Windows-gnu. These two steps therefore type-check without TLS; the real, TLS-enabled builds are the
+      # `android-native` and `windows` jobs below.
+      - name: Core type-checks for Android (no TLS)
         working-directory: core
-        run: cargo check -p revizor-jni --target aarch64-linux-android
-      - name: Windows sender type-checks
+        run: cargo check -p revizor-jni --target aarch64-linux-android --no-default-features
+      - name: Windows sender type-checks (no TLS)
         working-directory: core/crates/revizor-win-sender
-        run: cargo check --target x86_64-pc-windows-gnu
+        run: cargo check --target x86_64-pc-windows-gnu --no-default-features
+      - name: Windows sender host tests (controller logic)
+        working-directory: core/crates/revizor-win-sender
+        run: cargo test --no-default-features
       - name: Android platform-API Kotlin type-check
         run: tools/android-typecheck.sh
 
+  android-native:
+    name: Android native library (NDK, with TLS)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+      - name: cargo-ndk
+        run: cargo install cargo-ndk --locked
+      - name: Build librevizor_core.so (arm64-v8a)
+        working-directory: core
+        run: |
+          export ANDROID_NDK_HOME="${ANDROID_NDK_LATEST_HOME:-${ANDROID_NDK_ROOT:-$ANDROID_NDK_HOME}}"
+          echo "Using NDK at $ANDROID_NDK_HOME"
+          cargo ndk -t arm64-v8a build --release -p revizor-jni
+
   windows:
-    name: Windows sender (build)
+    name: Windows sender (build + tests)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
-      - working-directory: core/crates/revizor-win-sender
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core/crates/revizor-win-sender
+      - name: Build
+        working-directory: core/crates/revizor-win-sender
         run: cargo build --release
+      - name: Tests (controller logic)
+        working-directory: core/crates/revizor-win-sender
+        run: cargo test --release
       - uses: actions/upload-artifact@v4
         with:
           name: revizor-sender-windows

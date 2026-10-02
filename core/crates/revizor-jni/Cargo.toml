@@ -15,5 +15,12 @@ revizor-session.workspace = true
 revizor-transport.workspace = true
 revizor-adaptive.workspace = true
 revizor-media.workspace = true
+revizor-cast.workspace = true
 jni = "0.21"
 log.workspace = true
+
+[features]
+default = ["tls"]
+# Google Cast control channel (rustls + ring). `--no-default-features` lets the crate be type-checked for Android
+# without an NDK; real builds (cargo-ndk, Termux) keep it on.
+tls = ["revizor-cast/tls"]

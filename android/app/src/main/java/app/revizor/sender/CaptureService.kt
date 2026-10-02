@@ -44,6 +44,9 @@ class CaptureService : Service() {
         const val EXTRA_PROFILE = "profile"
         const val EXTRA_AUDIO = "audio"
         const val EXTRA_HEVC = "hevc"
+        /** "revizor" (default) or "tv" for Google Cast / DLNA targets. */
+        const val EXTRA_KIND = "kind"
+        const val EXTRA_TV_METHODS = "tvMethods"
         private const val CHANNEL = "capture"
         private const val NOTIF_ID = 17
 
@@ -61,6 +64,8 @@ class CaptureService : Service() {
     private var audio: AudioCapture? = null
     private var monitor: DeviceMonitor? = null
     private var sender = 0L
+    private var castHandle = 0L
+    private var keyframeTicker: Runnable? = null
     private var dpi = 320
     private var lastSource = Triple(0, 0, 0)
     private var displayListener: DisplayManager.DisplayListener? = null
@@ -123,6 +128,10 @@ class CaptureService : Service() {
             }, handler)
             projection = proj
 
+            if (i.getStringExtra(EXTRA_KIND) == "tv") {
+                beginTv(i, proj)
+                return
+            }
             val (w, h, hz) = displayInfo()
             lastSource = Triple(w, h, hz)
             val audioMode = AudioMode.entries.getOrElse(i.getIntExtra(EXTRA_AUDIO, 0)) { AudioMode.None }
@@ -138,7 +147,7 @@ class CaptureService : Service() {
 
             monitor = DeviceMonitor(this, sender).also { it.start() }
             if (audioMode != AudioMode.None) {
-                audio = AudioCapture(audioMode, proj, sender).also { runCatching { it.start() }.onFailure { e -> Log.e(tag, "audio failed", e); audio = null } }
+                audio = AudioCapture(audioMode, proj, RevizorSink(sender)).also { runCatching { it.start() }.onFailure { e -> Log.e(tag, "audio failed", e); audio = null } }
             }
             watchDisplay()
             scheduleStats()
@@ -165,12 +174,13 @@ class CaptureService : Service() {
             override fun onDisplayAdded(id: Int) {}
             override fun onDisplayRemoved(id: Int) {}
             override fun onDisplayChanged(id: Int) {
-                if (id != Display.DEFAULT_DISPLAY || sender == 0L) return
+                if (id != Display.DEFAULT_DISPLAY || (sender == 0L && castHandle == 0L)) return
                 val now = displayInfo()
                 if (now != lastSource) {
                     lastSource = now
                     Log.i(tag, "display changed to ${now.first}x${now.second}@${now.third}")
-                    Native.senderSetSource(sender, now.first, now.second, now.third)
+                    if (sender != 0L) Native.senderSetSource(sender, now.first, now.second, now.third)
+                    else handler.post { applyTvConfig(tvParams(now.first, now.second)) }
                 }
             }
         }
@@ -180,14 +190,15 @@ class CaptureService : Service() {
 
     private fun scheduleStats() {
         handler.postDelayed({
-            if (!running || sender == 0L) return@postDelayed
-            SenderController.update { it.copy(stats = StatsView.parse(Native.senderStats(sender))) }
+            if (!running) return@postDelayed
+            if (sender != 0L) SenderController.update { it.copy(stats = StatsView.parse(Native.senderStats(sender))) }
+            if (castHandle != 0L) SenderController.update { it.copy(tvStats = StatsView.parse(Native.castStats(castHandle))) }
             scheduleStats()
         }, 1000)
     }
 
     private fun teardown(keepError: Boolean = false) {
-        if (!running && sender == 0L && projection == null) return
+        if (!running && sender == 0L && castHandle == 0L && projection == null) return
         running = false
         displayListener?.let { getSystemService(DisplayManager::class.java).unregisterDisplayListener(it) }
         displayListener = null
@@ -196,9 +207,15 @@ class CaptureService : Service() {
         runCatching { virtualDisplay?.release() }; virtualDisplay = null
         encoder?.release(); encoder = null
         runCatching { projection?.stop() }; projection = null
+        keyframeTicker?.let { handler.removeCallbacks(it) }
+        keyframeTicker = null
         if (sender != 0L) {
             Native.senderStop(sender)
             sender = 0
+        }
+        if (castHandle != 0L) {
+            Native.castStop(castHandle)
+            castHandle = 0
         }
         if (!keepError) SenderController.reset()
         stopForeground(STOP_FOREGROUND_REMOVE)
@@ -208,6 +225,99 @@ class CaptureService : Service() {
         handler.post { teardown() }
         worker.quitSafely()
         super.onDestroy()
+    }
+
+    // ───────────────────────────── standard TV mode (Google Cast / DLNA) ─────────────────────────────
+
+    /**
+     * No Revizor on the other end: the core muxes our H.264 into MPEG-TS, serves it over HTTP on the LAN and tells the TV
+     * (Chromecast via Google Cast, other smart TVs via DLNA) to play it. Fixed 30 fps, ≤ 1080p, a keyframe every second
+     * (HLS segments can only start at keyframes). There is no feedback channel from a TV, so there is no adaptation here.
+     */
+    private fun beginTv(i: Intent, proj: MediaProjection) {
+        val name = i.getStringExtra(EXTRA_NAME) ?: "TV"
+        val (w, h, hz) = displayInfo()
+        lastSource = Triple(w, h, hz)
+        val audioMode = AudioMode.entries.getOrElse(i.getIntExtra(EXTRA_AUDIO, 0)) { AudioMode.None }
+        SenderController.update { it.copy(state = SendState.Connecting, error = null, mode = SendMode.Tv, peer = name, tvStatus = "Preparing…") }
+        castHandle = Native.castStart(tvCallback, i.getStringExtra(EXTRA_IP)!!, name, i.getStringExtra(EXTRA_TV_METHODS) ?: "", audioMode != AudioMode.None)
+        check(castHandle != 0L) { "could not start casting" }
+        applyTvConfig(tvParams(w, h))
+        if (audioMode != AudioMode.None) {
+            audio = AudioCapture(audioMode, proj, TvSink(castHandle)).also { runCatching { it.start() }.onFailure { e -> Log.e(tag, "audio failed", e); audio = null } }
+        }
+        // Force a keyframe every second so the HLS segmenter always has a place to cut, even on a static screen.
+        val tick = object : Runnable {
+            override fun run() {
+                if (!running) return
+                encoder?.requestKeyframe()
+                handler.postDelayed(this, 1000)
+            }
+        }
+        keyframeTicker = tick
+        handler.postDelayed(tick, 1000)
+        watchDisplay()
+        scheduleStats()
+    }
+
+    private fun tvParams(w: Int, h: Int): StreamParams {
+        val cap = CodecCaps.best(Codec.H264, true)
+        val align = CodecCaps.sizeAlign()
+        var short = 1080
+        var size = fitShortSide(w, h, short, align)
+        // Fall back to 720p if the encoder cannot do 1080p30.
+        if (cap != null && !CodecCaps.supports(cap, size.first, size.second, 30)) {
+            short = 720
+            size = fitShortSide(w, h, short, align)
+        }
+        val bps = (size.first.toLong() * size.second * 30 / 10).coerceIn(2_500_000L, 8_000_000L).toInt()
+        return StreamParams(epoch = 1, codec = Codec.H264, width = size.first, height = size.second, fps = 30, videoBps = bps, audioCodec = 0, audioRate = 0, audioChannels = 0, audioBps = 0)
+    }
+
+    private fun applyTvConfig(p: StreamParams) {
+        val proj = projection ?: return
+        try {
+            val old = encoder
+            val enc = VideoEncoder(p, TvSink(castHandle), Tuning(iFrameIntervalSec = 1, preferHighProfile = true)).also { it.start() }
+            val vd = virtualDisplay
+            if (vd == null) {
+                virtualDisplay = proj.createVirtualDisplay("Revizor", p.width, p.height, dpi, DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR, enc.inputSurface, null, handler)
+            } else {
+                vd.resize(p.width, p.height, dpi)
+                vd.surface = enc.inputSurface
+            }
+            encoder = enc
+            old?.release()
+            SenderController.update { it.copy(params = p, encoderName = enc.codecName, hardware = enc.hardware) }
+        } catch (t: Throwable) {
+            Log.e(tag, "cannot start the TV encoder", t)
+            SenderController.update { it.copy(state = SendState.Failed, error = "This phone's video encoder could not start (${t.message}).") }
+            teardown(keepError = true)
+            stopSelf()
+        }
+    }
+
+    private val tvCallback = object : Native.Callback {
+        override fun onEvent(kind: Int, nums: LongArray, text: String) {
+            handler.post {
+                when (kind) {
+                    1 -> when (nums.getOrElse(0) { 0 }.toInt()) {
+                        0 -> SenderController.update { it.copy(state = SendState.Connecting, tvStatus = "Preparing…") }
+                        1 -> SenderController.update { it.copy(state = SendState.Connecting, tvStatus = "Asking the TV to start…") }
+                        2 -> SenderController.update { it.copy(state = SendState.Streaming, tvStatus = null, error = null) }
+                        3 -> SenderController.update { it.copy(state = SendState.Streaming, tvStatus = "The TV is buffering…") }
+                        4 -> SenderController.update { it.copy(state = SendState.Reconnecting, tvStatus = "Reconnecting to the TV…") }
+                        5 -> {}
+                        6 -> {
+                            SenderController.update { it.copy(state = SendState.Failed, error = text, tvStatus = null) }
+                            teardown(keepError = true); stopSelf()
+                        }
+                    }
+                    2 -> SenderController.update { it.copy(tvStatus = "That did not work, trying $text…", method = text) }
+                    3 -> encoder?.requestKeyframe()
+                }
+            }
+        }
     }
 
     // ───────────────────────────── events from the Rust core ─────────────────────────────
@@ -249,7 +359,7 @@ class CaptureService : Service() {
         val proj = projection ?: return
         try {
             val old = encoder
-            val enc = VideoEncoder(p, sender).also { it.start() }
+            val enc = VideoEncoder(p, RevizorSink(sender)).also { it.start() }
             val vd = virtualDisplay
             if (vd == null) {
                 virtualDisplay = proj.createVirtualDisplay(

@@ -10,6 +10,15 @@ data class Discovered(
 
 data class TrustedDevice(val id: String, val name: String)
 
+/** A TV that was found on the network and needs no Revizor app: Google Cast and/or DLNA. */
+data class CastTv(val name: String, val ip: String, val model: String, val manufacturer: String, val methods: String) {
+    /** Human-readable list of ways we can talk to it, in the order they are tried. */
+    val methodLabels: String
+        get() = methods.split(';').mapNotNull { if (it.startsWith("cast")) "Google Cast" else if (it.startsWith("dlna")) "DLNA" else null }.joinToString(" + ")
+    val details: String
+        get() = listOf(manufacturer, model).filter { it.isNotBlank() }.joinToString(" ")
+}
+
 enum class PairResult { Ok, WrongPin, NoAnswer, Error }
 
 /** Owns the device identity and the trust store (files in app-private storage). */
@@ -41,4 +50,10 @@ class Core(context: Context) {
         2 -> PairResult.NoAnswer
         else -> PairResult.Error
     }
+
+    /** Looks for Chromecast / Google TV / DLNA televisions on every network the phone is connected to. */
+    fun scanTvs(timeoutMs: Int = 2500): List<CastTv> = Native.castScan(timeoutMs).lineSequence().filter { it.isNotBlank() }.mapNotNull {
+        val p = it.split('\t')
+        if (p.size < 5) null else CastTv(p[0], p[1], p[2], p[3], p[4])
+    }.toList()
 }

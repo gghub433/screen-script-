@@ -36,6 +36,11 @@ class Prefs(ctx: Context) {
         get() = sp.getString("deviceName", null) ?: android.os.Build.MODEL
         set(v) = sp.edit().putString("deviceName", v).apply()
 
+    /** `revizor:<device id>` or `tv:<ip>` of the last device we shared to; it is listed first. */
+    var lastTarget: String
+        get() = sp.getString("lastTarget", "") ?: ""
+        set(v) = sp.edit().putString("lastTarget", v).apply()
+
     var onboarded: Boolean
         get() = sp.getBoolean("onboarded", false)
         set(v) = sp.edit().putBoolean("onboarded", v).apply()

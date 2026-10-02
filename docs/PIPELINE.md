@@ -32,6 +32,22 @@ derived from the real display size (`fit_short_side`), never assumed 16:9.
    no hardware encoder is registered, and is reported in the UI ("Software encoder").
 5. Same core path as Android from here on.
 
+## TV mode (Chromecast / DLNA, nothing installed on the TV)
+
+Capture and the hardware encoder are the same; what differs is everything after them (full description in
+[CASTING.md](CASTING.md)):
+
+```
+CAPTURE → ENCODE (fixed ≤1080p30, IDR every 1 s) → MPEG-TS MUX → HLS segments / progressive TS → HTTP → the TV's own player
+```
+
+* Android: the encoder is built with a 1 s I-frame interval and a keyframe is also requested every second, so the HLS
+  segmenter can always cut; `repeat-previous-frame-after` keeps a static screen alive.
+* Windows: `Mode::Tv` letterboxes the source into one fixed output size on the GPU, forces a keyframe every second and
+  re-encodes the last frame after 200 ms of silence (a static desktop produces no new frames).
+* There is no feedback from the TV, so there is no adaptive engine, FEC, NACK or latency measurement on this path; the only
+  numbers shown are the ones the sender itself can measure (bitrate, bytes served, requests, uptime).
+
 ## Receiver (Android)
 
 `receive thread` decrypts/reassembles → bounded queue → `DecodeLoop` feeds `MediaCodec` (hardware, low-latency flags)

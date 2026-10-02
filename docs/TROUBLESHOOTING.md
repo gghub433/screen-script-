@@ -21,6 +21,28 @@ bug report (no screen/audio content inside).
 | Update does nothing | "Install unknown apps" not allowed, or the release has no APK + `.sha256` | Allow it when prompted; check the repository's latest release assets |
 | "Update failed its integrity check" | Corrupted download or tampered file | Retry; if it persists, do not install |
 
+## TV casting (“No app needed”)
+
+Background: [CASTING.md](CASTING.md). The message names the step that failed; Diagnostics shows *TV connections*, *Playlist
+requests*, *Segment requests* and *Blocked requests* so you can tell whether the TV ever came back for the picture.
+
+| What you see | Likely cause | What to do |
+|---|---|---|
+| The TV is not in the list | Different network / guest Wi-Fi / AP isolation; TV in standby with networking off; the TV's casting/DLNA feature is disabled | Same Wi-Fi as the phone/PC; switch the TV fully on; enable Chromecast built-in (Android TV / Google TV) or the TV's media-renderer / "DLNA" / "screen sharing" / "Smart View"-type setting; **Search again** (takes up to ~3 s); on Windows allow `revizor-sender.exe` on private networks |
+| “Cannot reach *TV* (…). Is it on the same Wi-Fi and is Chromecast built-in enabled?” | TCP 8009 blocked, TV asleep, wrong network | As above; Revizor then tries DLNA automatically if the TV offers it |
+| “*TV* accepted the command but never started playing. It may not support live network streams, or a firewall on this device is blocking it.” | The TV accepted the command but never opened the stream: many models/firmware refuse live MPEG-TS — or this PC's firewall blocked the TV's connection back | Allow Revizor on **private** networks (check *Blocked requests* and the firewall); try another device; use the Revizor receiver app or Android's built-in cast screen |
+| “*TV* did not start playing the stream.” / “*TV* did not start its media player.” | Cast: the Default Media Receiver started but never played the playlist (firewall, unsupported stream) / the app would not launch (TV busy, no internet for the Cast app on the TV) | As above; make sure the TV itself has internet access — Chromecast downloads the receiver app from Google |
+| “*TV* tried to fetch the picture from an unexpected address and was blocked.” | The TV (or a media-proxy on it) fetched from an IP other than the one it was discovered at; Revizor only serves the discovered IP | Report the model; use Android's built-in cast instead |
+| Nothing arrives and *Blocked requests* stays 0 | The PC's firewall dropped the TV's connection | Allow Revizor on **private** networks (Windows Defender Firewall → allow an app) |
+| “*TV* refused the stream.” / “*TV* could not play the stream.” | The Default Media Receiver rejected the H.264 profile or the playlist | Report the TV model; try DLNA/another device |
+| “Casting to *TV* was ended on the TV.” / “*TV* stopped playing.” | Someone pressed Stop / switched input on the TV, or another Cast sender took over | Start again |
+| “*TV* stopped receiving the picture.” / “Lost contact with *TV*.” | Wi-Fi dropped or the TV went to sleep | Better Wi-Fi (5 GHz / Ethernet on the PC); start again |
+| “Screen capture produced no picture, so there is nothing to send to the TV.” | The encoder never delivered a keyframe (capture blocked, protected content, driver) | See *Black screen* above; on Android grant the capture prompt |
+| The picture is 2–6 seconds behind | Normal: the TV buffers before showing a live stream | Use a Revizor receiver for low delay |
+| Stutter / “The TV is buffering…” | Weak Wi-Fi: a TV cannot request a lower bitrate | 5 GHz Wi-Fi, Ethernet on the PC, closer to the router |
+| Black bars | The source aspect ratio differs from the TV's; Revizor letterboxes instead of stretching | Normal |
+| No sound on Windows | Windows audio capture is not implemented yet | Android can send sound to a TV |
+
 ## Windows specifics
 
 * Needs Windows 10 version 1903+ for window/monitor capture. The yellow capture border is removable on Windows 11 only.

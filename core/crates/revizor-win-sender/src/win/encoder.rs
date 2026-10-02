@@ -64,7 +64,7 @@ fn pack(a: u32, b: u32) -> u64 {
 }
 
 impl Encoder {
-    pub fn new(d3d: &D3d, w: u32, h: u32, fps: u32, bitrate: u32) -> Result<Self, String> {
+    pub fn new(d3d: &D3d, w: u32, h: u32, fps: u32, bitrate: u32, gop_secs: u32) -> Result<Self, String> {
         unsafe {
             MFStartup(MF_VERSION, MFSTARTUP_FULL).map_err(|e| hr_err("MFStartup", e))?;
             let in_info = MFT_REGISTER_TYPE_INFO { guidMajorType: MFMediaType_Video, guidSubtype: MFVideoFormat_NV12 };
@@ -116,7 +116,7 @@ impl Encoder {
             set_codec(&codec, &CODECAPI_AVEncCommonRateControlMode, eAVEncCommonRateControlMode_CBR.0 as u32);
             set_codec(&codec, &CODECAPI_AVEncCommonMeanBitRate, bitrate);
             set_codec(&codec, &CODECAPI_AVEncMPVDefaultBPictureCount, 0);
-            set_codec(&codec, &CODECAPI_AVEncMPVGOPSize, fps * 10);
+            set_codec(&codec, &CODECAPI_AVEncMPVGOPSize, fps * gop_secs.max(1));
 
             // Output (compressed) type must be set before the input type for encoders.
             let out = MFCreateMediaType().map_err(|e| hr_err("MFCreateMediaType", e))?;

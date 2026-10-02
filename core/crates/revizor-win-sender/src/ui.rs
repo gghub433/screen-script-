@@ -90,7 +90,8 @@ fn handle(mut req: Request, ctl: &Arc<Controller>, sources: &Arc<dyn Fn() -> Vec
 
     let result: Result<serde_json::Value, String> = match (method, url.as_str()) {
         (Method::Get, "/api/state") => Ok(state(ctl, sources)),
-        (Method::Post, "/api/scan") => ctl.scan(1500).map(|_| json!({})).map_err(|e| format!("{e:?}")),
+        // Returns immediately; progress is `scanning` in /api/state (a TV scan takes a few seconds).
+        (Method::Post, "/api/scan") => Ok(json!({ "started": ctl.scan_async(1500) })),
         (Method::Post, "/api/pair") => ctl.pair(&s("id"), &s("pin")).map(|_| json!({})).map_err(msg),
         (Method::Post, "/api/forget") => Ok(json!({ "removed": ctl.forget(&s("id")) })),
         (Method::Post, "/api/manual") => ctl.add_manual(&s("ip")).map(|_| json!({})).map_err(msg),
@@ -122,6 +123,7 @@ fn state(ctl: &Controller, sources: &Arc<dyn Fn() -> Vec<Source> + Send + Sync>)
     json!({
         "device": { "name": ctl.device_name, "id": ctl.device_id() },
         "platform": if cfg!(windows) { "windows" } else { "other" },
+        "scanning": ctl.scanning(),
         "receivers": ctl.receivers(),
         "sources": sources(),
         "stream": ctl.stream_view(),

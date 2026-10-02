@@ -63,10 +63,7 @@ fn main() {
     let sources: Arc<dyn Fn() -> Vec<sources::Source> + Send + Sync> = Arc::new(win::list_sources);
     #[cfg(not(windows))]
     let sources: Arc<dyn Fn() -> Vec<sources::Source> + Send + Sync> = Arc::new(Vec::new);
-    // Look for receivers right away so the list is not empty on first paint.
-    let c2 = ctl.clone();
-    std::thread::spawn(move || {
-        let _ = c2.scan(1500);
-    });
+    // Look for receivers and TVs right away so the list fills in while the window opens.
+    ctl.scan_async(1500);
     ui.serve(ctl, sources);
 }

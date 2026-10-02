@@ -1,0 +1,25 @@
+[package]
+name = "revizor-cast"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Stream to TVs that have nothing of Revizor installed: Google Cast (Chromecast / Android TV) and DLNA/UPnP renderers, via MPEG-TS over HTTP/HLS."
+
+[features]
+default = ["tls"]
+# Fake TVs (DLNA renderer, Chromecast) used by integration tests; not part of production builds.
+testkit = []
+# Google Cast control channel needs TLS (rustls + ring). Disable only for type-checking targets without a C toolchain.
+tls = ["dep:rustls"]
+
+[dependencies]
+log.workspace = true
+rand.workspace = true
+serde_json = "1"
+socket2 = { version = "0.5", features = ["all"] }
+if-addrs = "0.13"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"], optional = true }
+
+[dev-dependencies]
+rcgen = "0.13"
+revizor-cast = { path = ".", features = ["testkit"] }

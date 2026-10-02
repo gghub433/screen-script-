@@ -7,8 +7,13 @@ engine that keeps the picture smooth and the device cool.
 * **Simple for users:** open the app → pick the device → Share. Resolution, frame rate, bitrate, error protection
   and buffering are chosen automatically and shown honestly when quality is reduced ("because of temperature protection").
 * **Serious underneath:** one Rust core (protocol, SPAKE2 pairing, authenticated encryption, FEC + NACK loss recovery,
-  adaptive streaming engine, sessions) shared by every platform, with 110+ automated tests.
-* **Private:** device-to-device only, end-to-end encrypted, no account, no relay, no analytics.
+  adaptive streaming engine, sessions) shared by every platform, with 170+ automated tests.
+* **Private:** device-to-device only, no account, no relay, no analytics; between Revizor devices the stream is end-to-end
+  encrypted (the no-app TV mode below is the one exception).
+* **No app needed on the TV:** turn sharing on and Revizor looks for Chromecast / Android TV / Google TV and DLNA smart TVs
+  on the same Wi-Fi and lists them next to your Revizor receivers — nothing to install on the TV. The trade-off is stated
+  plainly in [docs/CASTING.md](docs/CASTING.md): a delay of a few seconds set by the TV, a fixed ≤ 1080p30 picture, and a
+  stream that is **not** end-to-end encrypted. (And it has not yet been tried on a real TV.)
 
 > **Read [docs/STATUS.md](docs/STATUS.md) first.** It says exactly what is tested, what is only type-checked and what is
 > not implemented. In short: the core is built and tested here; the Windows sender and the Android app are written against
@@ -19,7 +24,7 @@ engine that keeps the picture smooth and the device cool.
 
 | Path | What |
 |---|---|
-| `core/` | Rust workspace: `revizor-proto`, `-crypto`, `-media`, `-adaptive`, `-transport`, `-session`, `-jni`, `-recv-cli` |
+| `core/` | Rust workspace: `revizor-proto`, `-crypto`, `-media`, `-adaptive`, `-transport`, `-session`, `-cast` (Chromecast/DLNA TVs), `-jni`, `-recv-cli` |
 | `core/crates/revizor-win-sender/` | Windows sender (Windows.Graphics.Capture → D3D11 → Media Foundation HW H.264) + local web UI |
 | `android/` | Android app (Kotlin, Compose): sender, receiver, benchmark, diagnostics, updater |
 | `tools/` | `termux-build.sh` (build/install the APK on a phone), `android-typecheck.sh` |
@@ -40,7 +45,7 @@ cargo run -p revizor-recv-cli -- --pair --out - | ffplay -f h264 -fflags nobuffe
 
 ## Documentation
 
-[Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Streaming pipeline](docs/PIPELINE.md) ·
+[Architecture](docs/ARCHITECTURE.md) · [Protocol](docs/PROTOCOL.md) · [Streaming pipeline](docs/PIPELINE.md) · [TV casting](docs/CASTING.md) ·
 [Encoder/decoder selection](docs/ENCODER_DECODER_SELECTION.md) · [Network](docs/NETWORK.md) · [Security](docs/SECURITY.md) ·
 [Build](docs/BUILD.md) · [Development](docs/DEVELOPMENT.md) · [Testing](docs/TESTING.md) · [Performance](docs/PERFORMANCE.md) ·
 [Troubleshooting](docs/TROUBLESHOOTING.md) · [Updates](docs/UPDATES.md) · [Status](docs/STATUS.md)
@@ -48,7 +53,7 @@ cargo run -p revizor-recv-cli -- --pair --out - | ffplay -f h264 -fflags nobuffe
 ## Roadmap
 
 MVP (this repo): Android + Windows senders, Android receiver, discovery, pairing, H.264 HW, 1080p30/60, audio (Android),
-adaptive bitrate, low-latency mode, auto-reconnect, encryption, diagnostics.
+adaptive bitrate, low-latency mode, auto-reconnect, encryption, diagnostics, and casting to Chromecast/DLNA TVs without an app.
 Next: HEVC/1440p/USB hardening on real devices, Windows audio, benchmark-driven defaults, Keystore/DPAPI key storage.
 Later: AV1, HDR, game-specific capture, QUIC, iOS/macOS/Linux/TV receivers.
 

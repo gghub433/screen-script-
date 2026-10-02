@@ -17,6 +17,7 @@ control, sessions, discovery — is **one Rust core** shared by every platform.
  │ revizor-crypto    Ed25519 identity · SPAKE2 PIN pairing · authenticated key exchange · ChaCha20-Poly1305   │
  │ revizor-proto     wire formats, capabilities, negotiation, discovery messages (no I/O)                     │
  │ revizor-transport Transport trait · UDP · TCP · LAN discovery · impaired-link simulator (tests)            │
+ │ revizor-cast      "no app on the TV" output: MPEG-TS/HLS server + Google Cast / DLNA control (see below)   │
  └─────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
                                                                                                        │
                  ┌──────────────────────── platform shell ────────────────────────┐                  ▼
@@ -24,6 +25,19 @@ control, sessions, discovery — is **one Rust core** shared by every platform.
  Dev receiver    │ revizor-recv (CLI): writes the elementary stream, prints stats  │
                  └──────────────────────────────────────────────────────────────────┘
 ```
+
+## Two kinds of receiver
+
+The shells hand the *same* encoded frames to one of two outputs, chosen by what the user picks in the device list:
+
+* **Revizor receiver** — `revizor-session`: our UDP protocol, pairing, end-to-end encryption, FEC/NACK, adaptive engine. Fast
+  and private, needs the app on the other device.
+* **Standard TV** — `revizor-cast`: the frames are muxed into MPEG-TS, served by a tiny HTTP server (HLS for Chromecast,
+  progressive TS for DLNA) and the TV is told to play the URL. Nothing is installed on the TV, but the delay is set by the TV
+  (seconds), the picture is fixed at ≤ 1080p30, and it is not end-to-end encrypted. See [CASTING.md](CASTING.md).
+
+A small `FrameSink` trait (`RevizorSink` / `TvSink` on Windows, `FrameSink.kt` on Android) is the only thing the capture and
+encoder code knows about this choice, apart from the encoder settings (TV mode: fixed size/fps and a keyframe every second).
 
 ## Why a shared Rust core
 
@@ -85,6 +99,7 @@ settings.
 | ChaCha20-Poly1305 | Fast on every ARM core without AES instructions → less heat/battery | AES-GCM |
 | SPAKE2 PIN pairing + pinned Ed25519 identities | A 6-digit PIN is safe against offline brute force; later connections need no PIN | Plain PIN-keyed HMAC (offline-guessable), unauthenticated discovery trust |
 | Sender runs the adaptive engine | It owns the encoder, thermal/battery state and bitrate control; receiver feeds real measurements back every 500 ms | Receiver-driven (cannot see encoder state) |
+| Casting to TVs via Google Cast / DLNA with an HTTP-served MPEG-TS/HLS stream | The only way to reach a TV with **no app** from a normal app: both are built into most TVs and take a plain H.264 stream over the LAN (Cast additionally needs the TV to have internet access for Google's receiver app) | Miracast (needs Wi-Fi Direct and OS-level support — Android's own cast screen already does it, Windows needs a driver stack), AirPlay (proprietary, authenticated), a browser page on the TV (needs the user to type a URL), WebRTC to the TV (no standard TV support) |
 | Local web UI for the Windows sender | Cross-checks easily, small attack surface when bound to 127.0.0.1 with token + Host checks, no GUI-toolkit dependency | Win32/WPF/Electron (not needed for the MVP) |
 | Android UI in Jetpack Compose | Current platform standard; same code for phone/tablet/TV | XML Views |
 
