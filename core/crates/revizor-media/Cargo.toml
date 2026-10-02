@@ -1,0 +1,9 @@
+[package]
+name = "revizor-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+revizor-proto.workspace = true
+log.workspace = true

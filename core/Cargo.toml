@@ -1,0 +1,40 @@
+[workspace]
+resolver = "2"
+members = ["crates/revizor-proto", "crates/revizor-crypto", "crates/revizor-media", "crates/revizor-adaptive", "crates/revizor-transport", "crates/revizor-session"]
+# revizor-win-sender is Windows-only and built separately (see docs/BUILD.md)
+exclude = ["crates/revizor-win-sender"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+rust-version = "1.75"
+
+[workspace.dependencies]
+thiserror = "1"
+log = "0.4"
+rand = "0.8"
+sha2 = "0.10"
+hmac = "0.12"
+hkdf = "0.12"
+chacha20poly1305 = "0.10"
+ed25519-dalek = { version = "2", features = ["rand_core"] }
+x25519-dalek = { version = "2", features = ["getrandom"] }
+spake2 = "0.4"
+subtle = "2"
+revizor-proto = { path = "crates/revizor-proto" }
+revizor-crypto = { path = "crates/revizor-crypto" }
+revizor-media = { path = "crates/revizor-media" }
+revizor-adaptive = { path = "crates/revizor-adaptive" }
+revizor-transport = { path = "crates/revizor-transport" }
+revizor-session = { path = "crates/revizor-session" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+
+# Dependencies (crypto, hashing) are optimised even in debug builds so tests behave like release.
+[profile.dev.package."*"]
+opt-level = 3
